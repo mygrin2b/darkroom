@@ -863,12 +863,18 @@ function addDoor(x, z, axis='x', w=1.5){
   if(axis==='x') mesh.position.set(hingeOff,1.3,0); else mesh.position.set(0,1.3,hingeOff);
   pivot.add(mesh);
   litLines.push({line:mesh, base:new THREE.Color(COL.door), center:new THREE.Vector3(x,1.3,z)});
+  // 子弹/视线遮挡实体：关着的门挡子弹（开门后移出 wallMeshes）
+  const solid = new THREE.Mesh(
+    new THREE.BoxGeometry(axis==='x'? w:T*0.6, 2.6, axis==='x'? T*0.6:w), wallHitMat);
+  solid.position.set(x,1.3,z); solid.userData.isWall=true;
+  scene.add(solid); trackObj(solid);
+  wallMeshes.push(solid);   // 初始关闭 → 挡子弹
   // 门的碰撞体：关闭时挡住门洞，打开后移除。门板沿 axis 方向横跨门洞。
   const half = w/2;
   const collider = (axis==='x')
     ? { minx:x-half, maxx:x+half, minz:z-0.35, maxz:z+0.35 }
     : { minx:x-0.35, maxx:x+0.35, minz:z-half, maxz:z+half };
-  const d = { pivot, open:false, angle:0, target:0, x, z, axis, collider };
+  const d = { pivot, open:false, angle:0, target:0, x, z, axis, collider, solid };
   colliders.push(collider);   // 初始关闭 → 挡路
   doors.push(d);
   return d;
@@ -878,6 +884,13 @@ function setDoorCollision(d, open){
   const idx = colliders.indexOf(d.collider);
   if(open && idx!==-1) colliders.splice(idx,1);       // 开 → 移除阻挡
   else if(!open && idx===-1) colliders.push(d.collider); // 关 → 恢复阻挡
+  // 子弹/视线遮挡同步：开门后子弹可穿过，关门挡住
+  if(d.solid){
+    const wi = wallMeshes.indexOf(d.solid);
+    if(open && wi!==-1) wallMeshes.splice(wi,1);
+    else if(!open && wi===-1) wallMeshes.push(d.solid);
+    d.solid.visible = !open;
+  }
 }
 
 // ---------- clues (amber) ----------
@@ -1148,16 +1161,16 @@ const LEVELS = [
     walls: [
       // L-shaped route: corridor down then right into a hall
       [0.5,10,-11,6],[0.5,7,-7,7.5],            // entry corridor sides
-      [8,T,-9,1],                               // corridor end / turn
+      // 横墙 z=1，在门(-9,1)处留 2.0 宽缺口：左段 x[-13,-10] 右段 x[-8,-3]
+      [3,T,-11.5,1],[5,T,-5.5,1],
       [T,16,-13,-6],                            // far left wall
       [T,16,11,-8],                             // right wall
       [26,T,-1,-19],                            // back wall
-      [10,T,-8,1],                              // divider top
       [T,8,3,-4],                               // central pillar wall
       [6,T,7,-10],                              // alcove
     ],
     crates: [[1.5,-4,-8],[1.5,5,-14],[1.4,-9,-12],[1.5,2,-16]],
-    doors: [[-9,1,'x'],[3,-8,'z']],
+    doors: [[-9,1,'x',2.0]],
     clues: [[-11,-15,'账本：下一站是地堡'],[9,-16,'钥匙卡 · 蓝']],
     ammo: [[-11,-3],[8,-13]],
     enemies: [
@@ -1960,11 +1973,28 @@ function moveEnemy(en, tx, tz, speed, dt){
   if(d<0.05) return;
   const ux=dx/d, uz=dz/d;
   const nx=en.x+ux*speed*dt, nz=en.z+uz*speed*dt;
+  // 前进方向若被关闭的门挡住 → 敌人推开它（先于 wall-slide 判定，避免敌人沿门蹭着走却不开门）
+  if(collide(nx,nz)){
+    const door = doorBlocking(nx,nz);
+    if(door && !door.open){
+      door.open=true; door.target=-Math.PI*0.62; setDoorCollision(door,true); SFX.door();
+    }
+  }
   // wall-slide: try full move, then x-only, then z-only
   if(!collide(nx,nz)){ en.x=nx; en.z=nz; }
   else if(!collide(nx,en.z)){ en.x=nx; }
   else if(!collide(en.x,nz)){ en.z=nz; }
   en.grp.position.set(en.x,0,en.z);
+}
+// 找出阻挡某点的门（用于敌人开门 / 可达性自检）
+function doorBlocking(nx,nz){
+  const r=0.3;
+  for(const dr of doors){
+    if(dr.open) continue;
+    const c=dr.collider;
+    if(nx>c.minx-r && nx<c.maxx+r && nz>c.minz-r && nz<c.maxz+r) return dr;
+  }
+  return null;
 }
 // radio chatter feed (deterministic templates, no LLM)
 let radioCd = 0;
@@ -2287,6 +2317,11 @@ function update(dt){
   if(len>0){
     mx/=len; mz/=len;
     const nx=player.pos.x+mx*spd*dt, nz=player.pos.z+mz*spd*dt;
+    // 走向关闭的门 → 自动推开（门仍挡视线/挡子弹，但绝不卡死通行）
+    if(collide(nx,nz) || collide(nx,player.pos.z) || collide(player.pos.x,nz)){
+      const dr = doorBlocking(nx,nz) || doorBlocking(nx,player.pos.z) || doorBlocking(player.pos.x,nz);
+      if(dr && !dr.open){ dr.open=true; dr.target=-Math.PI*0.62; setDoorCollision(dr,true); SFX.door(); }
+    }
     if(!collide(nx,player.pos.z)) player.pos.x=nx;
     if(!collide(player.pos.x,nz)) player.pos.z=nz;
   }
