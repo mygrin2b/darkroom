@@ -98,23 +98,22 @@
     backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); }
   .tbtn:active, .tbtn.pressed { background:rgba(20,20,20,.18); border-color:rgba(20,20,20,.6); }
   .tbtn .sub { font-size:9px; opacity:.55; letter-spacing:1px; }
-  #tFire { right:max(28px,env(safe-area-inset-right)); bottom:max(52px,env(safe-area-inset-bottom));
-    width:108px; height:108px; border-radius:50%; font-size:15px; }
-  #tAds  { right:max(150px,env(safe-area-inset-right)); bottom:max(70px,env(safe-area-inset-bottom));
-    width:74px; height:74px; border-radius:50%; font-size:12px; }
-  #tTorch{ right:max(150px,env(safe-area-inset-right)); bottom:max(160px,env(safe-area-inset-bottom));
-    width:74px; height:74px; border-radius:50%; font-size:13px; }
-  #tReload{ right:max(28px,env(safe-area-inset-right)); bottom:max(172px,env(safe-area-inset-bottom));
-    width:74px; height:60px; font-size:13px; }
+  /* 四个动作按钮：右下角弧形排布，互不拥挤。瞄准在最顺手的右下，其余环绕 */
+  #tAds   { right:max(34px,env(safe-area-inset-right));  bottom:max(150px,env(safe-area-inset-bottom));
+    width:96px; height:96px; border-radius:50%; font-size:15px; }
+  #tReload{ right:max(150px,env(safe-area-inset-right)); bottom:max(52px,env(safe-area-inset-bottom));
+    width:82px; height:82px; border-radius:50%; font-size:14px; }
+  #tTorch { right:max(150px,env(safe-area-inset-right)); bottom:max(168px,env(safe-area-inset-bottom));
+    width:82px; height:82px; border-radius:50%; font-size:14px; }
+  #tInteract{ right:max(252px,env(safe-area-inset-right)); bottom:max(96px,env(safe-area-inset-bottom));
+    width:78px; height:78px; border-radius:50%; font-size:13px; }
   /* 顶部小功能键 */
   .ttop { position:absolute; top:max(14px,env(safe-area-inset-top)); pointer-events:auto; touch-action:none;
-    width:52px; height:42px; font-size:12px; }
-  #tInteract{ right:max(212px,env(safe-area-inset-right)); bottom:max(64px,env(safe-area-inset-bottom));
-    width:64px; height:56px; font-size:12px; pointer-events:auto; touch-action:none; }
-  #tPeek { left:max(180px,env(safe-area-inset-left)); bottom:max(56px,env(safe-area-inset-bottom));
-    width:64px; height:64px; border-radius:50%; font-size:12px; }
+    width:58px; height:44px; font-size:12px; }
+  #tPeek { left:max(190px,env(safe-area-inset-left)); bottom:max(64px,env(safe-area-inset-bottom));
+    width:68px; height:68px; border-radius:50%; font-size:12px; }
   #tMap  { right:max(20px,env(safe-area-inset-right)); }
-  #tPause{ right:max(82px,env(safe-area-inset-right)); }
+  #tPause{ right:max(86px,env(safe-area-inset-right)); }
   /* 移动端把开始界面提示里的键位说明淡化 */
   body.touch .desktop-only { display:none !important; }
   body.touch .touch-only { display:block !important; }
@@ -205,11 +204,10 @@
 </div>
 <div id="exitPrompt" class="hidden">区域肃清 · 前往绿色出口撤离</div>
 
-<!-- 触屏控件：仅触屏设备(iPad/手机)显示，桌面端隐藏 -->
+<!-- 触屏控件：仅触屏设备(iPad/手机)显示，桌面端隐藏。开火=点击右半屏，无需独立按钮 -->
 <div id="touchUI">
   <div id="tStick"><div class="knob"></div></div>
   <div id="tPeek" class="tbtn">窥视<span class="sub">切角</span></div>
-  <div id="tFire" class="tbtn">开火</div>
   <div id="tAds" class="tbtn">瞄准</div>
   <div id="tTorch" class="tbtn">手电<span class="sub">T</span></div>
   <div id="tReload" class="tbtn">换弹<span class="sub">R</span></div>
@@ -237,6 +235,10 @@
   </div>
   <button class="start" id="startBtn">进入暗室</button>
   <button class="start" id="versusBtn" style="margin-top:14px">对战战区 (1v1 · 自动匹配)</button>
+  <div class="touch-only" id="sensRow" style="display:none; margin-top:22px; width:300px; max-width:80vw">
+    <div style="font-size:12px; letter-spacing:2px; opacity:.6; margin-bottom:8px">触屏视角灵敏度 · <span id="sensVal">1.5</span></div>
+    <input type="range" id="sensSlider" min="0.5" max="3.0" step="0.1" value="1.5" style="width:100%">
+  </div>
   <div class="sub" style="margin-top:30px;opacity:.4">清光全部波次 → 走进绿色出口 → 进入下一关 · 共 10 关，越来越大 · 阵亡则重打本关 · 琥珀色 ✚ 补给箱可补满弹药</div>
 </div>
 
@@ -861,9 +863,21 @@ function addDoor(x, z, axis='x', w=1.5){
   if(axis==='x') mesh.position.set(hingeOff,1.3,0); else mesh.position.set(0,1.3,hingeOff);
   pivot.add(mesh);
   litLines.push({line:mesh, base:new THREE.Color(COL.door), center:new THREE.Vector3(x,1.3,z)});
-  const d = { pivot, open:false, angle:0, target:0, x, z, axis };
+  // 门的碰撞体：关闭时挡住门洞，打开后移除。门板沿 axis 方向横跨门洞。
+  const half = w/2;
+  const collider = (axis==='x')
+    ? { minx:x-half, maxx:x+half, minz:z-0.35, maxz:z+0.35 }
+    : { minx:x-0.35, maxx:x+0.35, minz:z-half, maxz:z+half };
+  const d = { pivot, open:false, angle:0, target:0, x, z, axis, collider };
+  colliders.push(collider);   // 初始关闭 → 挡路
   doors.push(d);
   return d;
+}
+// 开/关门时同步增删碰撞体，使“开门后真的能过、关门后挡住”
+function setDoorCollision(d, open){
+  const idx = colliders.indexOf(d.collider);
+  if(open && idx!==-1) colliders.splice(idx,1);       // 开 → 移除阻挡
+  else if(!open && idx===-1) colliders.push(d.collider); // 关 → 恢复阻挡
 }
 
 // ---------- clues (amber) ----------
@@ -1109,11 +1123,11 @@ const LEVELS = [
     walls: [
       [0.5,8,-2.5,8],[0.5,8,2.5,8],            // entry corridor
       [16,T,0,-16],[T,12,-8,-10],[T,12,8,-10], // room box
-      [7,T,-4.25,-4],[7,T,4.25,-4],            // front wall w/ doorway
+      [6.5,T,-4.5,-4],[6.5,T,4.5,-4],          // front wall w/ wider doorway
       [2,2,-3,-9],[2,2,4,-12],                 // interior walls
     ],
     crates: [[1.4,0,-7]],
-    doors: [[0,-4,'x']],
+    doors: [[0,-4,'x',2.0]],
     clues: [[-3,-9,'弹壳：来过武装人员'],[6,-14,'文件：负责人代号 RAVEN']],
     ammo: [[-6,-11]],
     enemies: [
@@ -1569,6 +1583,7 @@ function syncHUD(){
 const keys = {};
 // 触屏输入状态：摇杆方向(-1..1)、是否激活、窥视键按下。供 update/视模 读取，叠加在键鼠之上
 const touchInput = { active:false, moveX:0, moveY:0, peeking:false };
+let touchSens = 1.5;   // 触屏视角灵敏度倍率，用户可在主菜单调节（0.5~3.0）
 const IS_TOUCH = (('ontouchstart' in window) || navigator.maxTouchPoints>0) && !matchMedia('(pointer:fine)').matches;
 let mapOn = true;
 let running=false;
@@ -1653,42 +1668,53 @@ addEventListener('mousemove', e=>{
   stick.addEventListener('touchend', endStick);
   stick.addEventListener('touchcancel', endStick);
 
-  // 右半屏拖动 = 转视角（手指落在画面右侧空白处即可，不与按钮冲突）
-  let lookId=null, lx=0, ly=0;
+  // 右半屏：轻点=开火，拖动=转视角。删除了独立开火按钮，点击任意右侧空白处即开火。
+  let lookId=null, lx=0, ly=0, lookMoved=0, lookStartT=0;
   canvas.addEventListener('touchstart', e=>{
     if(!running||paused) return;
     for(const t of e.changedTouches){
-      if(lookId===null && t.clientX > innerWidth*0.42){ lookId=t.identifier; lx=t.clientX; ly=t.clientY; }
+      if(lookId===null && t.clientX > innerWidth*0.40){
+        lookId=t.identifier; lx=t.clientX; ly=t.clientY; lookMoved=0; lookStartT=performance.now();
+      }
     }
   }, {passive:false});
   canvas.addEventListener('touchmove', e=>{
     if(lookId===null) return;
     for(const t of e.changedTouches){
       if(t.identifier===lookId){
-        const sens = gun.ads?0.0016:0.0030;
-        player.yaw   -= (t.clientX-lx)*sens;
-        player.pitch -= (t.clientY-ly)*sens;
+        const dx=t.clientX-lx, dy=t.clientY-ly;
+        lookMoved += Math.hypot(dx,dy);
+        const sens = (gun.ads?0.0016:0.0030) * touchSens;   // touchSens 用户可调
+        player.yaw   -= dx*sens;
+        player.pitch -= dy*sens;
         player.pitch = Math.max(-1.2, Math.min(1.2, player.pitch));
         lx=t.clientX; ly=t.clientY;
       }
     }
   }, {passive:false});
-  const endLook=e=>{ for(const t of e.changedTouches){ if(t.identifier===lookId) lookId=null; } };
+  const endLook=e=>{
+    for(const t of e.changedTouches){
+      if(t.identifier===lookId){
+        // 轻点（位移很小且时间短）= 开火
+        if(lookMoved<12 && performance.now()-lookStartT<300 && running && !paused && player.alive) fire();
+        lookId=null;
+      }
+    }
+  };
   canvas.addEventListener('touchend', endLook);
   canvas.addEventListener('touchcancel', endLook);
 
-  // 动作按钮统一绑定：按下触发，可持续(开火/瞄准)
+  // 动作按钮统一绑定：按下触发，可持续(瞄准)
   const bindTap=(id, onDown, onUp)=>{
     const el=document.getElementById(id);
     el.addEventListener('touchstart', e=>{ e.preventDefault(); el.classList.add('pressed'); onDown&&onDown(); }, {passive:false});
     const up=e=>{ e.preventDefault(); el.classList.remove('pressed'); onUp&&onUp(); };
     el.addEventListener('touchend', up); el.addEventListener('touchcancel', up);
   };
-  // 开火：按住连发（与左键一致，靠 fire() 内部 cooldown 限频）
-  let fireHold=false;
-  bindTap('tFire', ()=>{ if(running&&!paused&&player.alive) fire(); fireHold=true; }, ()=>{ fireHold=false; });
-  // 连发：循环里检测 fireHold
-  setInterval(()=>{ if(fireHold && running && !paused && player.alive) fire(); }, 70);
+  // 右侧长按连发：手指在右半屏按住不动超过 250ms 视为持续开火
+  setInterval(()=>{
+    if(lookId!==null && lookMoved<16 && performance.now()-lookStartT>250 && running && !paused && player.alive) fire();
+  }, 90);
   bindTap('tAds', ()=>{ gun.ads=true; }, ()=>{ gun.ads=false; });
   bindTap('tTorch', ()=>{ if(running){ torch.on=!torch.on; SFX.torchToggle(torch.on); syncHUD(); } });
   bindTap('tReload', ()=>{ if(running) startReload(); });
@@ -1696,6 +1722,12 @@ addEventListener('mousemove', e=>{
   bindTap('tPeek', ()=>{ touchInput.peeking=true; }, ()=>{ touchInput.peeking=false; });
   bindTap('tMap', ()=>{ mapOn=!mapOn; document.getElementById('minimap').classList.toggle('off',!mapOn); });
   bindTap('tPause', ()=>{ if(gameMode==='versus'){ showVsBanner('对战中无法暂停','#b06a00'); return; } if(running||paused) togglePause(); });
+
+  // 灵敏度滑块（主菜单，仅触屏显示）
+  const sl=document.getElementById('sensSlider'), sv=document.getElementById('sensVal');
+  if(sl){
+    sl.addEventListener('input', ()=>{ touchSens=parseFloat(sl.value); sv.textContent=touchSens.toFixed(1); });
+  }
 })();
 // 进入游戏时显隐触屏层（认 body.touch，兼容运行时动态启用）
 function setTouchUI(on){
@@ -1865,6 +1897,7 @@ function tryInteract(){
   }
   if(nd){
     nd.open=!nd.open; nd.target = nd.open? -Math.PI*0.62 : 0; SFX.door();
+    setDoorCollision(nd, nd.open);   // 开门移除阻挡 / 关门恢复阻挡
   }
   // clues
   for(const c of clues){
