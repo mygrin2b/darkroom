@@ -1,0 +1,2725 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BLACKROOM — 暗室</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=JetBrains+Mono:wght@300;500&display=swap');
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#f4f2ee; cursor:none; }
+  body { font-family:'JetBrains Mono', monospace; color:#1a1a1a; }
+
+  #game { display:block; width:100%; height:100%; }
+
+  /* ---- HUD ---- */
+  #hud { position:fixed; inset:0; pointer-events:none; z-index:10; }
+
+  #minimap { top:24px; left:34px; }
+  #minimap canvas { display:block; width:200px; height:200px;
+    background:rgba(244,242,238,.7); border:1px solid rgba(20,20,20,.45);
+    box-shadow:0 2px 10px rgba(0,0,0,.12); }
+  #minimap.off { display:none; }
+  #minimap .maplabel { font-size:10px; letter-spacing:2px; color:rgba(20,20,20,.5);
+    margin-top:5px; text-transform:uppercase; }
+
+  .corner { position:absolute; font-size:12px; letter-spacing:1px; color:rgba(20,20,20,.6);
+            text-transform:uppercase; }
+  #ammo { bottom:28px; right:34px; text-align:right; }
+  #ammo .num { font-family:'Special Elite'; font-size:42px; line-height:1; color:#111; }
+  #ammo .num.low { color:#ff3b3b; }
+  #ammo.resupply .num { animation:resupplyPulse .6s ease-out; }
+  @keyframes resupplyPulse { 0%{ color:#1aaa3c; transform:scale(1.25);} 100%{ color:#111; transform:scale(1);} }
+  #ammo .reload { color:#b06a00; font-size:12px; letter-spacing:2px; margin-top:4px; height:14px; }
+  #ammo .label { margin-top:6px; }
+
+  #status { bottom:28px; left:34px; }
+  #health { margin-bottom:10px; }
+  #health .hlabel { font-size:11px; letter-spacing:2px; color:rgba(20,20,20,.6); margin-bottom:4px; }
+  #health .hlabel span { color:#111; font-family:'Special Elite'; font-size:14px; }
+  #health .hbar { width:160px; height:7px; background:rgba(20,20,20,.15);
+    border:1px solid rgba(20,20,20,.4); }
+  #health .hfill { height:100%; width:100%; background:#1aaa3c; transition:width .25s ease-out, background .25s; }
+  #status .line { margin-top:3px; }
+  #status .torch.on { color:#d11f1f; font-weight:500; }
+  #status .stance.peek { color:#b06a00; }
+
+  #intel { top:250px; left:34px; max-width:300px; }
+  #intel .head { color:#b06a00; letter-spacing:3px; }
+  #intel .body { color:rgba(20,20,20,.5); margin-top:6px; font-size:11px; line-height:1.6; }
+  #enemycount { top:24px; right:34px; text-align:right; }
+  #enemycount .n { font-family:'Special Elite'; font-size:30px; color:#111; }
+  #enemycount .n.clear { color:#0a7fa0; }
+
+  /* ---- crosshair ---- */
+  #cross { position:fixed; left:50%; top:50%; width:40px; height:40px; transform:translate(-50%,-50%);
+           z-index:11; pointer-events:none; transition:width .12s, height .12s; }
+  #cross::before,#cross::after { content:''; position:absolute; background:rgba(20,20,20,.7); }
+  #cross::before { left:50%; top:0; width:1px; height:100%; transform:translateX(-.5px); }
+  #cross::after { top:50%; left:0; height:1px; width:100%; transform:translateY(-.5px); }
+  #cross .dot { position:absolute; left:50%; top:50%; width:2px; height:2px; background:#1a1a1a;
+                transform:translate(-50%,-50%); border-radius:50%; }
+
+  /* ---- enemy radio feed ---- */
+  #radio { position:fixed; right:34px; bottom:110px; z-index:11; pointer-events:none;
+    width:300px; text-align:right; display:flex; flex-direction:column; gap:4px; align-items:flex-end; }
+  #radio .msg { font-size:11px; letter-spacing:1px; color:rgba(20,20,20,.7);
+    background:rgba(244,242,238,.55); border-right:2px solid #b06a00; padding:3px 8px;
+    animation:radioIn .2s ease-out; }
+  #radio .msg b { color:#b06a00; font-weight:500; }
+  @keyframes radioIn { from{ opacity:0; transform:translateX(10px);} to{ opacity:1; transform:none;} }
+
+  /* ---- exit prompt ---- */
+  #exitPrompt { position:fixed; left:50%; bottom:90px; transform:translateX(-50%);
+    z-index:12; pointer-events:none; font-size:13px; letter-spacing:3px; color:#1aaa3c;
+    text-transform:uppercase; text-shadow:0 1px 4px rgba(244,242,238,.9);
+    border:1px solid rgba(26,170,60,.5); padding:8px 22px; background:rgba(244,242,238,.5); }
+  #exitPrompt.hidden { display:none; }
+
+  /* ---- target indicator ---- */
+  #target { position:fixed; left:50%; top:calc(50% - 70px); transform:translateX(-50%);
+    z-index:12; pointer-events:none; text-align:center; width:220px; }
+  #target.hidden { display:none; }
+  #target .tname { font-size:12px; letter-spacing:3px; color:#d11f1f; text-transform:uppercase;
+    margin-bottom:6px; text-shadow:0 1px 3px rgba(244,242,238,.9); }
+  #target .tbar { width:160px; height:5px; margin:0 auto; background:rgba(20,20,20,.18);
+    border:1px solid rgba(20,20,20,.4); }
+  #target .tfill { height:100%; width:100%; background:#d11f1f; transition:width .15s ease-out; }
+
+  /* ---- damage / muzzle flash ---- */
+  #vignette { position:fixed; inset:0; z-index:9; pointer-events:none;
+              box-shadow:inset 0 0 240px 60px rgba(120,110,95,.35); }
+  #hit { position:fixed; inset:0; z-index:12; pointer-events:none; background:radial-gradient(circle, rgba(255,0,0,0) 40%, rgba(255,0,0,.55) 100%); opacity:0; }
+  #flash { position:fixed; inset:0; z-index:8; pointer-events:none; background:rgba(180,140,60,.10); opacity:0; }
+
+  /* ---- overlays ---- */
+  .overlay { position:fixed; inset:0; z-index:30; background:#f4f2ee; display:flex;
+             flex-direction:column; align-items:center; justify-content:center; text-align:center;
+             cursor:none; }
+  .overlay h1 { font-family:'Special Elite'; font-size:64px; letter-spacing:14px; color:#111;
+                font-weight:normal; }
+  .overlay .sub { color:rgba(20,20,20,.5); letter-spacing:4px; margin-top:14px; font-size:13px; }
+  .overlay .keys { margin-top:46px; color:rgba(20,20,20,.55); font-size:12px; line-height:2.1;
+                   letter-spacing:1px; }
+  .overlay .keys b { color:#b06a00; font-weight:500; }
+  .overlay .start { margin-top:42px; border:1px solid rgba(20,20,20,.5); padding:14px 40px;
+                    letter-spacing:5px; font-size:13px; color:#111; cursor:pointer; pointer-events:auto;
+                    transition:.2s; background:transparent; font-family:'JetBrains Mono'; }
+  .overlay .start:hover { background:#1a1a1a; color:#f4f2ee; }
+  /* versus connection UI */
+  .netflow { margin-top:22px; width:440px; max-width:88vw; display:flex; flex-direction:column;
+    align-items:stretch; pointer-events:auto; }
+  .netlabel { font-size:11px; letter-spacing:1px; color:rgba(20,20,20,.65); margin:10px 0 5px; text-align:left; }
+  .netcode { width:100%; height:64px; resize:none; font-family:'JetBrains Mono'; font-size:9px;
+    line-height:1.3; color:#111; background:rgba(255,255,255,.6); border:1px solid rgba(20,20,20,.4);
+    padding:7px; word-break:break-all; }
+  .netmini { align-self:flex-start; margin-top:6px; border:1px solid rgba(20,20,20,.5); background:transparent;
+    color:#111; font-family:'JetBrains Mono'; font-size:11px; letter-spacing:2px; padding:7px 18px;
+    cursor:pointer; pointer-events:auto; transition:.15s; }
+  .netmini:hover { background:#1a1a1a; color:#f4f2ee; }
+  #endScreen h1.dead { color:#ff3b3b; }
+  #endScreen h1.win { color:#0a7fa0; }
+  .hidden { display:none !important; }
+  .scanline { position:fixed; inset:0; z-index:31; pointer-events:none; opacity:.04;
+    background:repeating-linear-gradient(0deg, #000 0 1px, transparent 1px 3px); }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="minimap" class="corner">
+    <canvas id="mapCanvas" width="200" height="200"></canvas>
+    <div class="maplabel">战术地图 [M]</div>
+  </div>
+  <div id="intel" class="corner">
+    <div class="head">案件 // 04A</div>
+    <div class="body">据报有人在此据点活动。清理所有目标，活着出去。听声辨位，贴墙切角。</div>
+  </div>
+  <div id="enemycount" class="corner">
+    <div>目标 <span id="wavelabel" style="opacity:.6;font-size:10px"></span></div><div class="n" id="ecount">0</div>
+  </div>
+  <div id="status" class="corner">
+    <div id="health">
+      <div class="hlabel">体力 <span id="hpnum">100</span></div>
+      <div class="hbar"><div class="hfill" id="hfill"></div></div>
+    </div>
+    <div class="line torch" id="torchStat">手电 [T] · 关</div>
+    <div class="line stance" id="stanceStat">站姿 · 直立</div>
+    <div class="line" style="color:rgba(20,20,20,.4)">[SHIFT] 切角窥视</div>
+  </div>
+  <div id="ammo" class="corner">
+    <div class="reload" id="reloadStat"></div>
+    <div class="num" id="ammoNum">12</div>
+    <div class="label">/ <span id="reserveNum">36</span> 余弹</div>
+  </div>
+</div>
+
+<div id="cross" class="hidden"><div class="dot"></div></div>
+<div id="target" class="hidden">
+  <div class="tname" id="tname">—</div>
+  <div class="tbar"><div class="tfill" id="tfill"></div></div>
+</div>
+<div id="exitPrompt" class="hidden">区域肃清 · 前往绿色出口撤离</div>
+<div id="radio"></div>
+<div id="vignette"></div>
+<div id="flash"></div>
+<div id="hit"></div>
+<div class="scanline"></div>
+
+<div id="startScreen" class="overlay">
+  <h1>BLACKROOM</h1>
+  <div class="sub">暗 · 室 — CQB 手枪原型</div>
+  <div class="keys">
+    <b>WASD</b> 移动 &nbsp;·&nbsp; <b>鼠标</b> 瞄准 &nbsp;·&nbsp; <b>左键</b> 开火<br>
+    <b>右键</b> 持枪精瞄 &nbsp;·&nbsp; <b>R</b> 换弹 &nbsp;·&nbsp; <b>T</b> 手电（照亮但暴露自己）<br>
+    <b>SHIFT</b> 贴墙切角窥视 &nbsp;·&nbsp; <b>F</b> 互动 / 开门 &nbsp;·&nbsp; <b>M</b> 地图 &nbsp;·&nbsp; <b>P</b> 暂停
+  </div>
+  <button class="start" id="startBtn">进入暗室</button>
+  <button class="start" id="versusBtn" style="margin-top:14px">对战战区 (1v1 · 自动匹配)</button>
+  <div class="sub" style="margin-top:30px;opacity:.4">清光全部波次 → 走进绿色出口 → 进入下一关 · 共 10 关，越来越大 · 阵亡则重打本关 · 琥珀色 ✚ 补给箱可补满弹药</div>
+</div>
+
+<div id="endScreen" class="overlay hidden">
+  <h1 id="endTitle"></h1>
+  <div class="sub" id="endSub"></div>
+  <button class="start" id="restartBtn">重来</button>
+</div>
+
+<div id="pauseScreen" class="overlay hidden">
+  <h1 style="font-size:48px;letter-spacing:12px">已暂停</h1>
+  <div class="sub" id="pauseSub">PAUSED</div>
+  <button class="start" id="resumeBtn">继续</button>
+  <button class="start" id="quitBtn" style="margin-top:16px">退出到主菜单</button>
+</div>
+
+<div id="netScreen" class="overlay hidden">
+  <h1 style="font-size:40px;letter-spacing:10px">对战 · 战区</h1>
+  <div class="sub" id="netStatus" style="margin-top:8px">进入战区后自动与另一名玩家配对</div>
+
+  <!-- AUTO matchmaking flow -->
+  <div id="netAuto" style="margin-top:30px;width:340px;max-width:84vw;text-align:center">
+    <div class="netlabel" style="text-align:center">战区房间号 · 与好友填同一个（留空 = 公共战区）</div>
+    <input id="roomCode" class="netcode" style="height:36px;text-align:center;letter-spacing:5px;font-size:14px" maxlength="16" placeholder="留空进入公共战区" autocomplete="off">
+    <button class="start" id="enterZoneBtn" style="margin-top:18px">进入战区</button>
+    <div class="netlabel" id="manualToggle" style="margin-top:26px;text-align:center;opacity:.5;cursor:pointer;user-select:none">没有外网 / 匹配失败？手动交换连接码 ▾</div>
+  </div>
+
+  <!-- MANUAL fallback (copy/paste codes) -->
+  <div id="netManual" class="hidden" style="width:340px;max-width:84vw">
+  <div id="netPick" style="margin-top:18px;display:flex;gap:16px;justify-content:center">
+    <button class="start" id="netHostBtn">创建房间</button>
+    <button class="start" id="netJoinBtn">加入房间</button>
+  </div>
+
+  <!-- HOST flow -->
+  <div id="netHost" class="netflow hidden">
+    <div class="netlabel">① 把下面的「邀请码」发给对方：</div>
+    <textarea id="hostOffer" class="netcode" readonly placeholder="正在生成…"></textarea>
+    <button class="netmini" id="copyOffer">复制邀请码</button>
+    <div class="netlabel">② 把对方回传的「应答码」粘贴到这里，然后连接：</div>
+    <textarea id="hostAnswer" class="netcode" placeholder="粘贴对方的应答码"></textarea>
+    <button class="netmini" id="hostConnect">连接</button>
+  </div>
+
+  <!-- JOIN flow -->
+  <div id="netJoin" class="netflow hidden">
+    <div class="netlabel">① 把对方的「邀请码」粘贴到这里：</div>
+    <textarea id="joinOffer" class="netcode" placeholder="粘贴对方的邀请码"></textarea>
+    <button class="netmini" id="joinGen">生成应答码</button>
+    <div class="netlabel">② 把下面的「应答码」发回给对方（对方点连接后即开打）：</div>
+    <textarea id="joinAnswer" class="netcode" readonly placeholder="等待生成…"></textarea>
+    <button class="netmini" id="copyAnswer">复制应答码</button>
+  </div>
+  </div><!-- /netManual -->
+
+  <button class="start" id="netBack" style="margin-top:24px">返回</button>
+</div>
+
+<!-- mqtt.js：仅用于“战区”自动配对时通过公共 MQTT(WSS) 中继交换 WebRTC 信令 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
+<script type="importmap">
+{ "imports": { "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* ============================================================
+   BLACKROOM — wireframe noir CQB pistol prototype
+   ============================================================ */
+
+const COL = {
+  wall:   0x1a1a1a,   // ink lines on white
+  enemy:  0x0a5a72,   // dark teal
+  clue:   0xa85e00,   // dark amber
+  door:   0x333a40,
+};
+
+// ---------- audio engine (WebAudio synth, no assets) ----------
+const SFX = (()=>{
+  let ctx=null, master=null;
+  // --- looping noir background music (drone pad + sequenced minor-key melody) ---
+  // Two intensity modes: 'calm' (slow, sparse, brooding) and 'combat' (faster, fuller, urgent).
+  let music = { mode:'calm', running:false, pad:[], padGain:null, melGain:null, bassGain:null, step:0, timer:null };
+  // A minor pentatonic-ish set, noir flavor. Frequencies in Hz.
+  const NOTE = { A2:110, C3:130.81, D3:146.83, E3:164.81, G3:196,
+                 A3:220, C4:261.63, D4:293.66, E4:329.63, G4:392, A4:440 };
+  // melody patterns per mode (null = rest). Calm is spacious; combat is driving.
+  const MELODY = {
+    calm:   [ 'A3', null, 'C4', null, 'E4', null, 'D4', null, 'A3', null, null, null, 'G3', null, 'A3', null ],
+    combat: [ 'A3','E4','A4','E4', 'G4','D4','G3','D4', 'A3','E4','C4','E4', 'D4','A3','C4','E4' ],
+  };
+  const BASS = {
+    calm:   [ 'A2', null, null, null, 'G3', null, null, null ],   // 'G3' used as low movement
+    combat: [ 'A2','A2','G3','G3', 'D3','D3','E3','E3' ],
+  };
+
+  function init(){
+    if(ctx) return;
+    ctx = new (window.AudioContext||window.webkitAudioContext)();
+    master = ctx.createGain(); master.gain.value=0.6; master.connect(ctx.destination);
+
+    // --- sustained pad: detuned saws (Am chord) through a slow lowpass, gentle wobble
+    music.padGain = ctx.createGain(); music.padGain.gain.value=0.0;
+    const padLP = ctx.createBiquadFilter(); padLP.type='lowpass'; padLP.frequency.value=600;
+    [NOTE.A2, NOTE.C3, NOTE.E3].forEach((f,i)=>{
+      const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=f;
+      const g=ctx.createGain(); g.gain.value=0.16-i*0.03;
+      o.connect(g); g.connect(padLP); o.start();
+      const lfo=ctx.createOscillator(); lfo.frequency.value=0.06+i*0.02;
+      const lg=ctx.createGain(); lg.gain.value=2.2; lfo.connect(lg); lg.connect(o.detune); lfo.start();
+    });
+    padLP.connect(music.padGain); music.padGain.connect(master);
+    // slow filter sweep on the pad for movement
+    const sweep=ctx.createOscillator(); sweep.frequency.value=0.03;
+    const sweepG=ctx.createGain(); sweepG.gain.value=260; sweep.connect(sweepG); sweepG.connect(padLP.frequency); sweep.start();
+
+    // melody + bass buses
+    music.melGain = ctx.createGain(); music.melGain.gain.value=0.0; music.melGain.connect(master);
+    music.bassGain = ctx.createGain(); music.bassGain.gain.value=0.0; music.bassGain.connect(master);
+
+    music.running=true;
+    music.padGain.gain.setTargetAtTime(0.5, ctx.currentTime, 3);    // fade pad in
+    music.melGain.gain.setTargetAtTime(0.5, ctx.currentTime, 3);
+    music.bassGain.gain.setTargetAtTime(0.5, ctx.currentTime, 3);
+    music.step=0;
+    sequence();
+  }
+
+  // pluck a single note (triangle + soft env) into a bus
+  function pluck(freq, bus, t, dur, vol, type){
+    const o=ctx.createOscillator(); o.type=type||'triangle'; o.frequency.value=freq;
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(vol,t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(bus); o.start(t); o.stop(t+dur+0.05);
+  }
+
+  // step sequencer — schedules one step, then queues the next
+  function sequence(){
+    if(!music.running) return;
+    const calm = music.mode==='calm';
+    const stepDur = calm? 0.5 : 0.26;          // tempo: calm ~120bpm half-notes, combat driving
+    const t = ctx.currentTime + 0.04;
+    const mel = MELODY[music.mode];
+    const bass = BASS[music.mode];
+    const mi = music.step % mel.length;
+    const bi = music.step % bass.length;
+    // melody
+    const mn = mel[mi];
+    if(mn && NOTE[mn]) pluck(NOTE[mn], music.melGain, t, calm?0.9:0.32, calm?0.16:0.20, 'triangle');
+    // bass
+    const bn = bass[bi];
+    if(bn && NOTE[bn]) pluck(NOTE[bn], music.bassGain, t, calm?1.4:0.5, 0.22, 'sine');
+    // combat adds an off-beat tick for drive
+    if(!calm && music.step%2===1) pluck(NOTE.A4, music.melGain, t, 0.12, 0.06, 'square');
+
+    music.step++;
+    music.timer = setTimeout(sequence, stepDur*1000);
+  }
+
+  // smoothly shift intensity; pad always plays, melody/bass swap patterns
+  function setMusicMode(mode){
+    if(music.mode===mode) return;
+    music.mode = mode;
+    if(!ctx) return;
+    // combat: brighter & a bit louder; calm: softer
+    music.melGain.gain.setTargetAtTime(mode==='combat'?0.6:0.5, ctx.currentTime, 0.4);
+    music.padGain.gain.setTargetAtTime(mode==='combat'?0.42:0.5, ctx.currentTime, 0.6);
+    music.step = 0;  // restart pattern cleanly on the new groove
+  }
+
+  function noiseBuf(dur){
+    const n=Math.floor(ctx.sampleRate*dur);
+    const b=ctx.createBuffer(1,n,ctx.sampleRate);
+    const d=b.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+    return b;
+  }
+  function gunshot(){
+    if(!ctx) return; const t=ctx.currentTime;
+    // sharp noise burst -> punchy crack
+    const src=ctx.createBufferSource(); src.buffer=noiseBuf(0.25);
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1400; bp.Q.value=0.6;
+    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=350;
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(0.9,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.22);
+    src.connect(bp); bp.connect(hp); hp.connect(g); g.connect(master);
+    src.start(t); src.stop(t+0.25);
+    // low thump body
+    const o=ctx.createOscillator(); o.type='triangle'; o.frequency.setValueAtTime(160,t);
+    o.frequency.exponentialRampToValueAtTime(48,t+0.12);
+    const og=ctx.createGain(); og.gain.setValueAtTime(0.7,t); og.gain.exponentialRampToValueAtTime(0.001,t+0.15);
+    o.connect(og); og.connect(master); o.start(t); o.stop(t+0.16);
+  }
+  function enemyShot(dist){
+    if(!ctx) return; const t=ctx.currentTime;
+    const vol=Math.max(0.15, 0.7-dist*0.04);
+    const src=ctx.createBufferSource(); src.buffer=noiseBuf(0.2);
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=900; bp.Q.value=0.5;
+    const g=ctx.createGain(); g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.18);
+    src.connect(bp); bp.connect(g); g.connect(master); src.start(t); src.stop(t+0.2);
+  }
+  function click(){
+    if(!ctx) return; const t=ctx.currentTime;
+    const o=ctx.createOscillator(); o.type='square'; o.frequency.value=2200;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0.12,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.04);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+0.05);
+  }
+  function reload(){
+    if(!ctx) return; const t=ctx.currentTime;
+    // two mechanical clacks
+    [0,0.9].forEach(off=>{
+      const src=ctx.createBufferSource(); src.buffer=noiseBuf(0.05);
+      const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; bp.Q.value=2;
+      const g=ctx.createGain(); g.gain.setValueAtTime(0.4,t+off); g.gain.exponentialRampToValueAtTime(0.001,t+off+0.06);
+      src.connect(bp); bp.connect(g); g.connect(master); src.start(t+off); src.stop(t+off+0.06);
+    });
+  }
+  function torchToggle(on){
+    if(!ctx) return; const t=ctx.currentTime;
+    const o=ctx.createOscillator(); o.type='sine';
+    o.frequency.setValueAtTime(on?600:900,t); o.frequency.exponentialRampToValueAtTime(on?900:500,t+0.06);
+    const g=ctx.createGain(); g.gain.setValueAtTime(0.15,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+0.09);
+  }
+  function hit(){ // player takes damage
+    if(!ctx) return; const t=ctx.currentTime;
+    const o=ctx.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(220,t);
+    o.frequency.exponentialRampToValueAtTime(60,t+0.3);
+    const g=ctx.createGain(); g.gain.setValueAtTime(0.5,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.32);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+0.33);
+  }
+  function kill(head){
+    if(!ctx) return; const t=ctx.currentTime;
+    const o=ctx.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(head?900:600,t);
+    o.frequency.exponentialRampToValueAtTime(120,t+0.25);
+    const g=ctx.createGain(); g.gain.setValueAtTime(0.3,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.28);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+0.29);
+  }
+  function pickup(){
+    if(!ctx) return; const t=ctx.currentTime;
+    [660,990].forEach((f,i)=>{
+      const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f;
+      const g=ctx.createGain(); g.gain.setValueAtTime(0.0,t+i*0.08);
+      g.gain.linearRampToValueAtTime(0.18,t+i*0.08+0.02); g.gain.exponentialRampToValueAtTime(0.001,t+i*0.08+0.18);
+      o.connect(g); g.connect(master); o.start(t+i*0.08); o.stop(t+i*0.08+0.2);
+    });
+  }
+  function door(){
+    if(!ctx) return; const t=ctx.currentTime;
+    const src=ctx.createBufferSource(); src.buffer=noiseBuf(0.5);
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=300; bp.Q.value=1.5;
+    const g=ctx.createGain(); g.gain.setValueAtTime(0.0,t); g.gain.linearRampToValueAtTime(0.25,t+0.1);
+    g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+    src.connect(bp); bp.connect(g); g.connect(master); src.start(t); src.stop(t+0.5);
+  }
+  return { init, gunshot, enemyShot, click, reload, torchToggle, hit, kill, pickup, door, setMusicMode };
+})();
+
+// ============================================================
+//  NET — WebRTC P2P。两条数据信道：
+//    'event' 可靠有序  —— 伤害/比分/死亡/事件（丢包会重传，比分不会错乱）
+//    'state' 不可靠     —— 20Hz 位置状态（丢了无所谓，下一帧就到）
+//  信令两种方式：MATCH 自动配对（见下），或手动复制粘贴压缩码。
+// ============================================================
+const NET = (()=>{
+  let pc=null, dcState=null, dcEvent=null, isHost=false, connected=false;
+  let onMsg=()=>{}, onOpen=()=>{}, onClose=()=>{};
+  const RTC_CFG = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
+
+  // ICE 收集：收齐即返回 —— 完成事件、或最后一个 candidate 后 450ms 无新增（纯内网
+  // 连不上 STUN 时不必干等），硬上限 3s。
+  function waitIce(p){
+    return new Promise(res=>{
+      let settle=null, done=false;
+      const finish=()=>{ if(done) return; done=true; clearTimeout(settle); res(); };
+      const poke=()=>{ clearTimeout(settle); settle=setTimeout(finish, 450); };
+      p.addEventListener('icecandidate', e=>{ if(e.candidate) poke(); else finish(); });
+      p.addEventListener('icegatheringstatechange', ()=>{ if(p.iceGatheringState==='complete') finish(); });
+      poke();
+      setTimeout(finish, 3000);
+    });
+  }
+
+  // 手动连接码：deflate 压缩 + base64（约为原长 1/3，不易被聊天软件截断）
+  async function pack(obj){
+    const t=JSON.stringify(obj);
+    if(window.CompressionStream){
+      const buf=await new Response(new Blob([t]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
+      let s=''; const u=new Uint8Array(buf);
+      for(let i=0;i<u.length;i++) s+=String.fromCharCode(u[i]);
+      return 'c1.'+btoa(s);
+    }
+    return btoa(unescape(encodeURIComponent(t)));
+  }
+  async function unpack(str){
+    str=str.trim();
+    if(str.startsWith('c1.')){
+      const bin=atob(str.slice(3));
+      const u=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+      const txt=await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+      return JSON.parse(txt);
+    }
+    return JSON.parse(decodeURIComponent(escape(atob(str))));
+  }
+
+  function bindChannel(ch){
+    ch.onmessage=(e)=>{ try{ onMsg(JSON.parse(e.data)); }catch(_){} };
+    if(ch.label==='event'){
+      dcEvent=ch;
+      ch.onopen =()=>{ if(!connected){ connected=true; onOpen(); } };
+      ch.onclose=()=>{ if(connected){ connected=false; onClose(); } };
+    } else dcState=ch;
+  }
+  function newPC(){
+    pc=new RTCPeerConnection(RTC_CFG);
+    pc.onconnectionstatechange=()=>{
+      if(pc && (pc.connectionState==='disconnected'||pc.connectionState==='failed')){
+        if(connected){ connected=false; onClose(); }
+      }
+    };
+    return pc;
+  }
+
+  // 返回/接受的都是原始 SessionDescription 对象；手动模式由 UI 层再 pack/unpack
+  async function createOffer(){
+    close(); isHost=true; newPC();
+    bindChannel(pc.createDataChannel('event',{ ordered:true }));
+    bindChannel(pc.createDataChannel('state',{ ordered:false, maxRetransmits:0 }));
+    await pc.setLocalDescription(await pc.createOffer());
+    await waitIce(pc);
+    return pc.localDescription;
+  }
+  async function acceptOffer(desc){
+    close(); isHost=false; newPC();
+    pc.ondatachannel=(e)=> bindChannel(e.channel);
+    await pc.setRemoteDescription(desc);
+    await pc.setLocalDescription(await pc.createAnswer());
+    await waitIce(pc);
+    return pc.localDescription;
+  }
+  async function acceptAnswer(desc){ await pc.setRemoteDescription(desc); }
+
+  function send(obj){
+    const ch = obj.t==='state' ? dcState : dcEvent;   // 按消息类型路由信道
+    if(ch && ch.readyState==='open') ch.send(JSON.stringify(obj));
+  }
+  function close(){
+    try{ dcState&&dcState.close(); dcEvent&&dcEvent.close(); pc&&pc.close(); }catch(_){}
+    dcState=dcEvent=null; pc=null; connected=false;
+  }
+  // 发送告别后稍候再关，让可靠信道有机会把 'bye' 送达
+  function sayBye(){ send({t:'bye'}); setTimeout(close, 200); }
+  return {
+    createOffer, acceptOffer, acceptAnswer, send, close, sayBye, pack, unpack,
+    get connected(){ return connected; }, get isHost(){ return isHost; },
+    set onMsg(f){ onMsg=f; }, set onOpen(f){ onOpen=f; }, set onClose(f){ onClose=f; },
+  };
+})();
+
+// ============================================================
+//  MATCH — “进入战区”自动配对。
+//  双方连到公共 MQTT(WSS) 中继，订阅同一房间主题，自动互换 WebRTC 信令：
+//  谁也不用复制粘贴。中继只用于牵线，连上后即断开，游戏数据全程 P2P。
+// ============================================================
+const MATCH = (()=>{
+  const BROKERS = [
+    'wss://broker.emqx.io:8084/mqtt',
+    'wss://broker.hivemq.com:8884/mqtt',
+    'wss://test.mosquitto.org:8081',
+  ];
+  let client=null, topic='', myId='', peerId=null, hiTimer=null, active=false, brokerIdx=0;
+  let pairTimer=null;
+  let onStatus=()=>{};
+  const rnd=()=> Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
+
+  // 配对后 15s 内 P2P 仍未打通 → 放弃这次握手，回到等待（NAT 受限/对方中途退出等）
+  function armPairTimeout(){
+    clearTimeout(pairTimer);
+    pairTimer=setTimeout(()=>{
+      if(active && peerId && !NET.connected){
+        NET.close(); peerId=null;
+        onStatus('直连未打通 · 已重新等待配对（若多次失败，请尝试手动连接）');
+        pub({k:'hi', id:myId});
+      }
+    }, 15000);
+  }
+
+  function stop(){
+    active=false; peerId=null;
+    clearInterval(hiTimer); hiTimer=null;
+    clearTimeout(pairTimer); pairTimer=null;
+    if(client){ try{ client.end(true); }catch(_){} client=null; }
+  }
+  function pub(o){ if(client){ try{ client.publish(topic, JSON.stringify(o)); }catch(_){} } }
+
+  function start(room){
+    stop(); active=true; myId=rnd(); brokerIdx=0;
+    topic='blackroom/v1/'+(room||'PUBLIC');
+    connectBroker();
+  }
+  function connectBroker(){
+    if(!active) return;
+    if(typeof mqtt==='undefined'){ onStatus('匹配组件未加载（无外网？）· 请使用下方手动连接'); stop(); return; }
+    if(brokerIdx>=BROKERS.length){ onStatus('匹配服务器均不可达 · 请检查网络或使用手动连接'); stop(); return; }
+    onStatus('正在进入战区…');
+    client=mqtt.connect(BROKERS[brokerIdx], { connectTimeout:6000, keepalive:30, clean:true, reconnectPeriod:0 });
+    client.on('connect', ()=>{
+      if(!active) return;
+      client.subscribe(topic, err=>{
+        if(err){ tryNext(); return; }
+        onStatus('已进入战区 · 等待另一名玩家…');
+        pub({k:'hi', id:myId});
+        clearInterval(hiTimer);
+        hiTimer=setInterval(()=>{ if(active && !peerId) pub({k:'hi', id:myId}); }, 2000);
+      });
+    });
+    client.on('message', (_,payload)=>{ try{ handle(JSON.parse(payload.toString())); }catch(_){} });
+    client.on('error', tryNext);
+  }
+  function tryNext(){
+    if(!active) return;
+    try{ client&&client.end(true); }catch(_){}
+    client=null; brokerIdx++;
+    connectBroker();
+  }
+  async function handle(m){
+    if(!active || !m || m.id===myId) return;
+    if(m.k==='hi' && !peerId){
+      // 双方都会广播 hi：id 较小的一方担任主机、发起 offer（确定性选主，无竞态）
+      peerId=m.id; armPairTimeout();
+      pub({k:'hi', id:myId});   // 保证后进入者也能被先进入者看到
+      if(myId<peerId){
+        onStatus('发现对手 · 正在建立直连…');
+        try{
+          const desc=await NET.createOffer();
+          pub({k:'offer', id:myId, to:peerId, sdp:desc});
+        }catch(e){ onStatus('建立连接失败：'+e.message); peerId=null; }
+      } else onStatus('发现对手 · 等待对方发起连接…');
+    } else if(m.k==='offer' && m.to===myId){
+      peerId=m.id; armPairTimeout();
+      onStatus('收到连接请求 · 应答中…');
+      try{
+        const ans=await NET.acceptOffer(m.sdp);
+        pub({k:'answer', id:myId, to:peerId, sdp:ans});
+        onStatus('正在打通 P2P 通道…');
+      }catch(e){ onStatus('应答失败：'+e.message); peerId=null; }
+    } else if(m.k==='answer' && m.to===myId){
+      try{ await NET.acceptAnswer(m.sdp); onStatus('正在打通 P2P 通道…'); }
+      catch(e){ onStatus('连接失败：'+e.message); peerId=null; }
+    }
+  }
+  return { start, stop, set onStatus(f){ onStatus=f; }, get active(){ return active; } };
+})();
+
+
+// ---------- renderer / scene ----------
+const canvas = document.getElementById('game');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf4f2ee);
+scene.fog = new THREE.FogExp2(0xf4f2ee, 0.10); // distance fades to paper white
+
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.05, 200);
+const player = {
+  pos: new THREE.Vector3(0, 1.6, 8),
+  yaw: Math.PI, pitch: 0,
+  speed: 3.4,
+  peek: 0, peekTarget: 0,   // -1..1 lean
+  alive: true,
+  engagedT: 0,              // >0 表示近期接敌(开火/精瞄)，驱动 high-ready 据枪姿态
+};
+
+// ---------- game mode ----------
+let gameMode = 'campaign';   // 'campaign' | 'versus'
+// versus state
+const vs = {
+  active:false, myKills:0, foeKills:0, target:5,
+  foe:null,            // remote player avatar {grp, body, head, bodyHit, headHit, ...}
+  foeState:{ x:0,z:0,yaw:0, torch:false, alive:true, peek:0 },
+  snaps:[],            // 收到的状态快照 {t,x,z,yaw,pk}，用于插值
+  respawnAt:0,         // timestamp to respawn local player
+  msgQueue:[],
+};
+// 对手的光源（手电 + 枪口闪光）：同样照亮线框世界，也会暴露其自身位置 ——
+// 这是“开灯看得清但会被看到”机制在对战中的另一半。
+const foeLight = { active:false, torchI:0, flashI:0, pos:new THREE.Vector3(), fwd:new THREE.Vector3(0,0,-1) };
+
+// ============================================================
+//  弹道曳光 + 弹着点微光
+//  曳光：一条淡墨细线从枪口延伸到命中点，约 0.2s 渐隐 ——
+//  自己的弹着反馈，也让被射方能反向追溯射手方位（“开火暴露”的另一半）。
+//  弹着点：命中处短暂照亮附近线框 —— 朝黑暗打一枪可以当“侦察弹”用。
+// ============================================================
+const tracers=[]; const TRACER_N=12; let tracerIdx=0;
+(function initTracers(){
+  for(let i=0;i<TRACER_N;i++){
+    const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+    const m=new THREE.LineBasicMaterial({ color:0x2a2a2a, transparent:true, opacity:0, fog:false });
+    const l=new THREE.Line(g,m); l.visible=false; l.frustumCulled=false;
+    scene.add(l); tracers.push({ l, life:0, max:0.20 });
+  }
+})();
+function spawnTracer(ax,ay,az, bx,by,bz, color){
+  const t=tracers[tracerIdx++ % TRACER_N];
+  const pos=t.l.geometry.attributes.position;
+  pos.setXYZ(0,ax,ay,az); pos.setXYZ(1,bx,by,bz); pos.needsUpdate=true;
+  t.l.geometry.computeBoundingSphere?.();
+  t.l.material.color.set(color||0x2a2a2a);
+  t.life=t.max; t.l.visible=true;
+}
+function updateTracers(dt){
+  for(const t of tracers){
+    if(t.life<=0) continue;
+    t.life-=dt;
+    t.l.material.opacity=Math.max(0,t.life/t.max)*0.75;
+    if(t.life<=0) t.l.visible=false;
+  }
+}
+// 弹着点微光槽（环形复用，最多同时 4 处）
+const IMPACT_N=4; const impacts=Array.from({length:IMPACT_N},()=>({x:0,y:0,z:0,i:0}));
+let impactIdx=0;
+function spawnImpact(x,y,z, inten=3.5){
+  const s=impacts[impactIdx++ % IMPACT_N];
+  s.x=x; s.y=y; s.z=z; s.i=inten;
+}
+
+
+// ---------- "light reveals lines" ----------
+// A flashlight cone + muzzle flash drive a custom shader fade on every line.
+const torch = { on:false };
+const torchLight = new THREE.SpotLight(0xcfeaff, 0, 22, Math.PI/5.2, 0.55, 1.2);
+const flashLight = new THREE.PointLight(0xffe0a0, 0, 9, 1.8);
+scene.add(torchLight, torchLight.target, flashLight);
+
+// ambient sliver so player isn't fully blind near self
+const ambient = new THREE.PointLight(0xaab4c0, 0.55, 4.2, 2.0);
+scene.add(ambient);
+
+// ---------- materials ----------
+// Wireframe lines that respond to scene lights via a Lambert-ish line material trick:
+// we use LineBasicMaterial but modulate color by light proximity manually each frame.
+function lineMat(color){
+  return new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.12 });
+}
+
+let litLines = []; // {line, baseColor, center}
+const floorLines = []; // persistent floor grid, never cleared
+const levelObjects = []; // every Object3D belonging to the current level (for teardown)
+
+function trackObj(o){ levelObjects.push(o); return o; }
+
+function addWireBox(w,h,d, x,y,z, color=COL.wall){
+  const geo = new THREE.BoxGeometry(w,h,d);
+  const edges = new THREE.EdgesGeometry(geo);
+  const line = new THREE.LineSegments(edges, lineMat(color));
+  line.position.set(x,y,z);
+  scene.add(line); trackObj(line);
+  litLines.push({ line, base:new THREE.Color(color), center:new THREE.Vector3(x,y,z) });
+  return line;
+}
+
+// ---------- level building ----------
+let colliders = []; // {min,max} AABB walls (xz)
+let wallMeshes = []; // 子弹遮挡用的实体墙网格缓存（关卡加载时填充，免去每帧 scene.traverse）
+const wallHitMat = new THREE.MeshBasicMaterial({ visible:false });
+function wall(w,d, x,z, h=3, color=COL.wall){
+  addWireBox(w,h,d, x, h/2, z, color);
+  colliders.push({ minx:x-w/2, maxx:x+w/2, minz:z-d/2, maxz:z+d/2 });
+  // invisible solid for bullet occlusion
+  const solid = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallHitMat);
+  solid.position.set(x, h/2, z);
+  solid.userData.isWall = true;
+  scene.add(solid); trackObj(solid);
+  wallMeshes.push(solid);
+}
+// freestanding crate cover (waist-high, blocks shots + movement)
+function crate(size, x,z){
+  const s=size;
+  addWireBox(s,s,s, x, s/2, z, COL.wall);
+  colliders.push({minx:x-s/2,maxx:x+s/2,minz:z-s/2,maxz:z+s/2});
+  const m=new THREE.Mesh(new THREE.BoxGeometry(s,s,s), wallHitMat);
+  m.position.set(x,s/2,z); m.userData.isWall=true; scene.add(m); trackObj(m);
+  wallMeshes.push(m);
+}
+
+// floor grid (faint) — persists across levels, built once
+(function floor(){
+  const size=50, step=2;
+  for(let i=-size; i<=size; i+=step){
+    const m = lineMat(0x555555);
+    const a = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-size,0.01,i),new THREE.Vector3(size,0.01,i)]);
+    const b = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(i,0.01,-size),new THREE.Vector3(i,0.01,size)]);
+    const la=new THREE.Line(a,m), lb=new THREE.Line(b,m);
+    scene.add(la,lb);
+    floorLines.push({line:la, base:new THREE.Color(0x555555), center:new THREE.Vector3(0,0,i)});
+    floorLines.push({line:lb, base:new THREE.Color(0x555555), center:new THREE.Vector3(i,0,0)});
+  }
+})();
+
+const T = 0.25; // wall thickness
+
+// ---- DOORS (each level can have several) ----
+let doors = []; // {pivot, open, angle, target, x, z}
+function addDoor(x, z, axis='x', w=1.5){
+  // hinge at one edge; axis 'x' = door spans along x at given z
+  const pivot = new THREE.Group();
+  const hingeOff = w/2;
+  if(axis==='x'){ pivot.position.set(x-hingeOff, 0, z); }
+  else { pivot.position.set(x, 0, z-hingeOff); }
+  scene.add(pivot); trackObj(pivot);
+  const mesh = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(axis==='x'? w:T*0.6, 2.6, axis==='x'? T*0.6:w)),
+    lineMat(COL.door));
+  if(axis==='x') mesh.position.set(hingeOff,1.3,0); else mesh.position.set(0,1.3,hingeOff);
+  pivot.add(mesh);
+  litLines.push({line:mesh, base:new THREE.Color(COL.door), center:new THREE.Vector3(x,1.3,z)});
+  const d = { pivot, open:false, angle:0, target:0, x, z, axis };
+  doors.push(d);
+  return d;
+}
+
+// ---------- clues (amber) ----------
+let clues = [];
+function addClue(x,z,label){
+  const g = new THREE.OctahedronGeometry(0.18);
+  const e = new THREE.EdgesGeometry(g);
+  const l = new THREE.LineSegments(e, lineMat(COL.clue));
+  l.position.set(x,0.4,z);
+  scene.add(l); trackObj(l);
+  const ll={line:l, base:new THREE.Color(COL.clue), center:l.position.clone(), clue:true, found:false};
+  litLines.push(ll);
+  clues.push({mesh:l, x, z, label, found:false, ll});
+}
+
+// ---------- ammo crates (amber box, refills reserve on pickup) ----------
+let ammoCrates = [];
+function addAmmo(x,z){
+  // a small wireframe box with an inner cross, sits on the floor
+  const grp = new THREE.Group();
+  const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.5,0.4,0.5)), lineMat(COL.clue));
+  box.position.y=0.22; grp.add(box);
+  // a little "+" on top to read as supplies
+  const cross = new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-0.15,0.43,0), new THREE.Vector3(0.15,0.43,0),
+      new THREE.Vector3(0,0.43,-0.15), new THREE.Vector3(0,0.43,0.15)]),
+    lineMat(COL.clue));
+  grp.add(cross);
+  grp.position.set(x,0,z); scene.add(grp); trackObj(grp);
+  litLines.push({line:box, base:new THREE.Color(COL.clue), center:grp.position, clue:true, found:true});
+  litLines.push({line:cross, base:new THREE.Color(COL.clue), center:grp.position, clue:true, found:true});
+  ammoCrates.push({grp, box, cross, x, z, used:false});
+}
+
+// ---------- enemies ----------
+let enemies = [];
+// ============================================================
+//  线框人形角色 —— 战役敌人与对战对手共用的可动骨架。
+//  关节：躯干（前倾/窥视侧倾）、双腿（按实际位移自动摆动）、
+//  持枪臂（俯仰跟随视线/开枪后坐/换弹收枪）、副手臂（行走摆动/举手电）。
+//  全身线段共享一个材质：整个人作为整体被光照亮或隐没（配合 revealLine）。
+// ============================================================
+function makeHumanoid(color){
+  const mat = lineMat(color);
+  const parts = [];
+  const grp = new THREE.Group();
+  const seg=(parent, w,h,d, x,y,z)=>{
+    const l = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w,h,d)), mat);
+    l.position.set(x,y,z); parent.add(l); parts.push(l); return l;
+  };
+  // 腿：髋部枢轴（角色朝向 = 局部 +z）
+  const legL = new THREE.Group(); legL.position.set( 0.13,0.92,0); grp.add(legL);
+  const legR = new THREE.Group(); legR.position.set(-0.13,0.92,0); grp.add(legR);
+  seg(legL, 0.14,0.92,0.17, 0,-0.46,0);
+  seg(legR, 0.14,0.92,0.17, 0,-0.46,0);
+  // 躯干枢轴
+  const torso = new THREE.Group(); torso.position.set(0,0.92,0); grp.add(torso);
+  const chest = seg(torso, 0.46,0.60,0.26, 0,0.34,0);   // 胸腹
+  seg(torso, 0.34,0.12,0.20, 0,0.02,0);                 // 腰
+  const head = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.SphereGeometry(0.17,8,6)), mat);
+  head.position.set(0,0.86,0); torso.add(head); parts.push(head);
+  // 持枪臂（角色右手，局部 -x 侧）：前伸指向 +z
+  const armR = new THREE.Group(); armR.position.set(-0.27,0.56,0.04); torso.add(armR);
+  seg(armR, 0.10,0.10,0.46, 0,0,0.25);                  // 前伸的手臂
+  seg(armR, 0.06,0.16,0.26, 0,0.03,0.56);               // 手枪
+  // 副手臂：自然垂下；战术持枪时摆到身前扶握（双手据枪），开手电时举到身前
+  const armL = new THREE.Group(); armL.position.set(0.27,0.56,0); torso.add(armL);
+  seg(armL, 0.10,0.52,0.10, 0,-0.28,0);
+  seg(armL, 0.08,0.08,0.20, 0,-0.54,0.06);              // 手电筒
+  return { grp, mat, parts, chest, head, torso, armR, armL, legL, legR,
+           anim:{ phase:Math.random()*6, recoil:0, reload:0, speed:0,
+                  ready:0, brace:0, yawV:0, _px:null, _pz:null, _yaw:null } };
+}
+
+// 步态由根节点的实际位移自动推导；CQB 战术姿态由 opt 状态驱动：
+//   pitch 视线俯仰 / peek 窥视侧倾 / torchOn 举手电
+//   engaged 是否接敌（决定 low-ready 压枪 vs high-ready 抬平据枪）
+//   wall    贴墙依托方向（-1 左肩靠墙 / 0 无 / +1 右肩靠墙）
+function animateHumanoid(h, dt, pitch, peek, torchOn, opt){
+  const a=h.anim, g=h.grp;
+  const engaged = !!(opt&&opt.engaged);
+  const wall    = opt? (opt.wall||0) : 0;
+  if(a._px===null){ a._px=g.position.x; a._pz=g.position.z; a._yaw=g.rotation.y; }
+  const v = Math.hypot(g.position.x-a._px, g.position.z-a._pz)/Math.max(dt,1e-4);
+  a._px=g.position.x; a._pz=g.position.z;
+  a.speed += (Math.min(v,5)-a.speed)*Math.min(1,dt*10);
+  // 转向角速度（枪随眼走：转身时枪口横向带一点滞后摆动）
+  let dyaw=angleDiff(g.rotation.y, a._yaw)/Math.max(dt,1e-4); a._yaw=g.rotation.y;
+  a.yawV += (Math.max(-3,Math.min(3,dyaw))-a.yawV)*Math.min(1,dt*8);
+  const walking = a.speed>0.3;
+  // CQB 步态：节奏更碎、步幅更小（不是大步跑，是稳步压进）
+  if(walking) a.phase += dt*(5.5+a.speed*1.6);
+  const swing = walking? Math.sin(a.phase)*Math.min(0.34, 0.14+a.speed*0.06) : 0;
+  h.legL.rotation.x += ( swing - h.legL.rotation.x)*Math.min(1,dt*14);
+  h.legR.rotation.x += (-swing - h.legR.rotation.x)*Math.min(1,dt*14);
+
+  // —— ready 状态：接敌→high-ready(1)，不接敌→low-ready(0)。平滑过渡 ——
+  const readyTarget = engaged?1:0;
+  a.ready += (readyTarget-a.ready)*Math.min(1, dt*6);
+  // —— brace：移动或贴墙时降低重心、含胸（战术屈膝下潜）——
+  const braceTarget = (walking?0.6:0) + (wall?0.5:0) + (engaged?0.3:0);
+  a.brace += (Math.min(1,braceTarget)-a.brace)*Math.min(1,dt*7);
+
+  // 躯干：屈膝下潜（整体下沉 + 前倾），窥视侧倾，贴墙时肩膀转向墙体方向取得依托
+  h.torso.rotation.z += ((peek*0.38 + wall*0.12) - h.torso.rotation.z)*Math.min(1,dt*10);
+  h.torso.rotation.x += ((0.06 + a.brace*0.16 + a.ready*0.05) - h.torso.rotation.x)*Math.min(1,dt*6);
+  h.torso.position.y = 0.92 - a.brace*0.10 + (walking? Math.abs(Math.cos(a.phase))*0.025 : 0);
+  // 站姿宽度：下潜时略微沉胯（用根节点 y 体现重心，腿枢轴已随之）
+  g.position.y = -a.brace*0.05;
+
+  // —— 持枪臂：low-ready 压枪约 35°，high-ready 抬平随视线俯仰 ——
+  a.recoil *= Math.exp(-dt*8);
+  if(a.reload>0) a.reload -= dt;
+  const lowReady = 0.62;                                   // 枪口下压角(rad)
+  const aimX = -pitch;                                      // 接敌时跟随视线
+  let armX = (1-a.ready)*lowReady + a.ready*aimX;           // ready 之间插值
+  armX += -a.recoil*0.55 + (a.reload>0? 0.95 : 0);          // 后坐 / 换弹收枪
+  h.armR.rotation.x += (armX - h.armR.rotation.x)*Math.min(1, dt*(a.recoil>0.05?28:10));
+  // 枪随眼走：转身时枪臂横向滞后摆（armR 的 y 轴），停转即回正
+  h.armR.rotation.y += (-a.yawV*0.10 - h.armR.rotation.y)*Math.min(1,dt*10);
+
+  // —— 副手：举手电 > 接敌双手据枪(摆到身前扶握) > 行走反摆 ——
+  let armLX, armLY=0;
+  if(torchOn)      armLX = -Math.PI*0.46;                   // 举手电
+  else if(a.ready>0.3){ armLX = -Math.PI*0.42 + (-pitch)*0.6; armLY = 0.5; } // 据枪扶握
+  else             armLX = walking? -swing*0.5 : -0.05;     // 垂手/反摆
+  h.armL.rotation.x += (armLX - h.armL.rotation.x)*Math.min(1,dt*8);
+  h.armL.rotation.y += (armLY - h.armL.rotation.y)*Math.min(1,dt*8);
+}
+
+function makeEnemy(x,z,facing){
+  const h = makeHumanoid(COL.enemy);
+  const grp = h.grp;
+
+  const hitMat = new THREE.MeshBasicMaterial({ visible:false });
+  const bodyHit = new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.42,1.6,8), hitMat);
+  bodyHit.position.y = 0.95;
+  const headHit = new THREE.Mesh(new THREE.SphereGeometry(0.34,8,6), hitMat);
+  headHit.position.y = 1.95;
+  grp.add(bodyHit, headHit);
+
+  // leader crown — a small ring above the head, hidden unless this enemy is squad leader
+  const crown = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(
+      Array.from({length:17},(_,k)=>{ const a=k/16*Math.PI*2; return new THREE.Vector3(Math.cos(a)*0.34,0,Math.sin(a)*0.34); })),
+    new THREE.LineBasicMaterial({ color:0xb06a00, transparent:true, opacity:0 }));
+  crown.position.y = 2.4;
+  grp.add(crown);
+
+  grp.position.set(x,0,z);
+  grp.rotation.y = facing;
+  scene.add(grp); trackObj(grp);
+  // 全身共享材质 → 一条 litLines 记录即可驱动整个人的明暗
+  litLines.push({line:h.chest, base:new THREE.Color(COL.enemy), center:grp.position, enemyPart:true, grp});
+  const e = {
+    grp, h, mat:h.mat, x, z, facing, alive:true,
+    state:'idle',
+    alertTimer:0, fireCd:0, lastSeen:null,
+    head:h.head, body:h.chest, bodyHit, headHit, crown,
+    hp:100, maxhp:100, name:'',
+    strafeDir: Math.random()<0.5?1:-1, strafeTimer:0,
+    role:'hold', isLeader:false, flankSign:1, repathTimer:0,
+  };
+  enemies.push(e);
+  return e;
+}
+
+// ---------- squad coordination (deterministic tactical layer) ----------
+const squad = {
+  leader: null,
+  lastKnown: null,    // {x,z} shared "last known player position"
+  lastKnownAge: 999,  // seconds since any squad member saw the player
+  engaged: false,     // is the squad in combat (someone has/had contact)
+  cmdTimer: 0,        // leader re-issues orders on this cadence
+};
+// boss/officer names get command priority; otherwise most HP
+const RANK = ['RAVEN','副官','队长','卫兵','哨兵','守卫','狙击','巡逻','打手','仓管'];
+function rankOf(name){
+  for(let i=0;i<RANK.length;i++) if(name && name.includes(RANK[i])) return i;
+  return RANK.length;
+}
+function assignLeader(){
+  const alive = enemies.filter(e=>e.alive);
+  alive.forEach(e=>{ e.isLeader=false; if(e.crown) e.crown.material.opacity=0; });
+  if(!alive.length){ squad.leader=null; return; }
+  // pick by rank, tie-break by HP
+  alive.sort((a,b)=> rankOf(a.name)-rankOf(b.name) || b.hp-a.hp);
+  squad.leader = alive[0];
+  squad.leader.isLeader = true;
+}
+function initSquad(){
+  squad.leader=null; squad.lastKnown=null; squad.lastKnownAge=999;
+  squad.engaged=false; squad.cmdTimer=0;
+  assignLeader();
+}
+
+// spawn a reinforcement wave at its emergence point
+function spawnWave(wave){
+  waveIndex++;
+  const from = wave.from || {x:0,z:0};
+  // emergence flash — a quick expanding ring at the spawn point
+  const ring = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(
+      Array.from({length:25},(_,k)=>{ const a=k/24*Math.PI*2; return new THREE.Vector3(Math.cos(a),0.05,Math.sin(a)); })),
+    new THREE.LineBasicMaterial({ color:0xd11f1f, transparent:true, opacity:0.9 }));
+  ring.position.set(from.x,0,from.z); scene.add(ring); trackObj(ring);
+  const t0=performance.now();
+  const grow=()=>{
+    const t=(performance.now()-t0)/700;
+    if(t>=1){ scene.remove(ring); return; }
+    const s=0.5+t*3; ring.scale.set(s,1,s); ring.material.opacity=0.9*(1-t);
+    requestAnimationFrame(grow);
+  };
+  grow();
+  // create the enemies, nudged so they emerge from the same point and fan out
+  wave.enemies.forEach((e,k)=>{
+    const en=makeEnemy(e[0],e[1],e[2]); en.name=e[3];
+    // they already "know" where you are — this is a coordinated push
+  });
+  // reinforcements arrive already alerted to your last position
+  squad.lastKnown = { x:player.pos.x, z:player.pos.z };
+  squad.lastKnownAge = 0; squad.engaged = true; squad.cmdTimer = 0;
+  assignLeader();
+  SFX.door();
+  const lead = squad.leader ? squad.leader.name : '指挥部';
+  radio(lead, `增援到位 · 第 ${waveIndex+1} 波 · 包围他！`, true);
+}
+
+// ============================================================
+//  LEVELS — data definitions
+//  walls: [w,d,x,z(,h)]   crates: [size,x,z]
+//  doors: [x,z,axis]      clues: [x,z,label]
+//  enemies: [x,z,facing,name]
+//  spawn:{x,z,yaw}  exit:{x,z}  map:{minx,maxx,minz,maxz}
+// ============================================================
+const LEVELS = [
+  {
+    name: '案件 04A · 入口据点',
+    intel: '据报有人在此据点活动。清理所有目标，找到出口离开。',
+    spawn: { x:0, z:8, yaw:Math.PI },
+    map: { minx:-9, maxx:9, minz:-18, maxz:10 },
+    walls: [
+      [0.5,8,-2.5,8],[0.5,8,2.5,8],            // entry corridor
+      [16,T,0,-16],[T,12,-8,-10],[T,12,8,-10], // room box
+      [7,T,-4.25,-4],[7,T,4.25,-4],            // front wall w/ doorway
+      [2,2,-3,-9],[2,2,4,-12],                 // interior walls
+    ],
+    crates: [[1.4,0,-7]],
+    doors: [[0,-4,'x']],
+    clues: [[-3,-9,'弹壳：来过武装人员'],[6,-14,'文件：负责人代号 RAVEN']],
+    ammo: [[-6,-11]],
+    enemies: [
+      [-5,-13,Math.PI*0.25,'哨兵 · VIKTOR'],[5,-8,Math.PI*1.1,'守卫 · DRAKE'],
+      [1,-14,0,'打手 · MOROZ'],[-6,-8,Math.PI*0.4,'巡逻 · IGOR'],[6,-13,Math.PI*1.2,'打手 · FedoR'],
+    ],
+    waves: [
+      // reinforcements pour in through the back wall corners
+      { from:{x:-6,z:-15}, enemies:[[-6,-15,Math.PI*0.1,'增援 · SEMYON'],[6,-15,Math.PI*1.1,'增援 · ARKADY'],[0,-15.5,0,'增援 · NIKITA']] },
+    ],
+    exit: { x:0, z:-15.2 },
+  },
+  {
+    name: '案件 04B · 仓储区',
+    intel: 'RAVEN 的货物藏在仓库深处。两段走廊，注意交叉火力。',
+    spawn: { x:-9, z:9, yaw:Math.PI },
+    map: { minx:-13, maxx:13, minz:-20, maxz:11 },
+    walls: [
+      // L-shaped route: corridor down then right into a hall
+      [0.5,10,-11,6],[0.5,7,-7,7.5],            // entry corridor sides
+      [8,T,-9,1],                               // corridor end / turn
+      [T,16,-13,-6],                            // far left wall
+      [T,16,11,-8],                             // right wall
+      [26,T,-1,-19],                            // back wall
+      [10,T,-8,1],                              // divider top
+      [T,8,3,-4],                               // central pillar wall
+      [6,T,7,-10],                              // alcove
+    ],
+    crates: [[1.5,-4,-8],[1.5,5,-14],[1.4,-9,-12],[1.5,2,-16]],
+    doors: [[-9,1,'x'],[3,-8,'z']],
+    clues: [[-11,-15,'账本：下一站是地堡'],[9,-16,'钥匙卡 · 蓝']],
+    ammo: [[-11,-3],[8,-13]],
+    enemies: [
+      [-9,-10,0,'仓管 · PYOTR'],[-4,-15,Math.PI*0.2,'巡逻 · LEV'],
+      [7,-6,Math.PI,'狙击 · ANYA'],[6,-15,Math.PI*1.3,'打手 · OSIP'],
+      [-11,-8,0,'守卫 · ROMAN'],[2,-12,Math.PI*0.5,'打手 · GLEB'],
+    ],
+    waves: [
+      { from:{x:-11,z:-18}, enemies:[[-11,-18,0,'增援 · STEPAN'],[-7,-18,Math.PI*0.1,'增援 · MAKAR'],[9,-18,Math.PI*1.4,'增援 · YURI'],[5,-17,Math.PI*1.2,'增援 · ZAKHAR']] },
+      { from:{x:9,z:-18}, enemies:[[9,-17,Math.PI*1.5,'狙击 · NADYA'],[-9,-16,Math.PI*0.2,'打手 · ILYA'],[0,-18,0,'队长 · SAVELY']] },
+    ],
+    exit: { x:9, z:-18 },
+  },
+  {
+    name: '案件 04C · 地堡指挥所',
+    intel: 'RAVEN 本人在此。火力最猛的一关——清场后从后门撤离。',
+    spawn: { x:0, z:10, yaw:Math.PI },
+    map: { minx:-15, maxx:15, minz:-22, maxz:12 },
+    walls: [
+      [0.6,8,-3,9],[0.6,8,3,9],                 // entry
+      [30,T,0,-21],                             // back wall
+      [T,22,-14,-10],[T,22,14,-10],             // side walls
+      [9,T,-9.5,-2],[9,T,9.5,-2],               // front wall w/ central door
+      // inner command room — north wall split to leave a central 2.5-wide doorway
+      [3.75,T,-3.125,-13],[3.75,T,3.125,-13],   // (gap from x=-1.25..1.25)
+      [T,8,-5,-17],[T,8,5,-17],
+      // side cover spurs
+      [4,T,-10,-9],[4,T,10,-9],
+    ],
+    crates: [[1.6,-7,-6],[1.6,7,-6],[1.5,-3,-9],[1.5,3,-9],[1.4,-2.5,-19.5],[1.5,-10,-15],[1.5,10,-15]],
+    doors: [[0,-2,'x'],[0,-13,'x',2.5]],
+    clues: [[-12,-18,'保险箱密码残页'],[12,-5,'撤离路线图']],
+    ammo: [[-11,-6],[11,-6],[0,-15]],
+    enemies: [
+      [-8,-6,Math.PI*0.3,'卫兵 · GRIGOR'],[8,-6,Math.PI*1.7,'卫兵 · TARAS'],
+      [-4,-12,0,'副官 · DMITRI'],[4,-12,0,'副官 · BORIS'],
+      [-11,-15,Math.PI*0.5,'狙击 · KIRA'],[11,-15,Math.PI*1.5,'狙击 · LARA'],
+      [-9,-9,Math.PI*0.2,'卫兵 · PAVEL'],[9,-9,Math.PI*1.8,'卫兵 · SERGEI'],
+    ],
+    waves: [
+      { from:{x:0,z:-13}, enemies:[
+        [-3,-11,0,'突击 · MIKHAIL'],[3,-11,0,'突击 · ALEKSEI'],
+        [-7,-13,Math.PI*0.3,'卫兵 · DENIS'],[7,-13,Math.PI*1.7,'卫兵 · TIMUR'],[0,-12,0,'队长 · OLEG'],
+      ] },
+      { from:{x:0,z:-18}, enemies:[
+        [-5,-17,Math.PI*0.2,'近卫 · ANTON'],[5,-17,Math.PI*1.8,'近卫 · MAXIM'],
+        [-2,-18,0,'副官 · LEONID'],[2,-18,0,'副官 · RUSLAN'],[0,-19,0,'RAVEN'],
+      ] },
+    ],
+    exit: { x:0, z:-20 },
+  },
+];
+
+// ============================================================
+//  PROCEDURAL LEVELS (4..10) — a raid through a chain of rooms.
+//  Difficulty scales with `tier`: bigger map, more rooms, more
+//  enemies & waves. Connectivity is guaranteed (each room links
+//  to the next via a doorway gap), so no enemy is ever sealed off.
+// ============================================================
+const FNAMES = ['VIKTOR','DRAKE','MOROZ','IGOR','SEMYON','ARKADY','NIKITA','PYOTR','LEV','ANYA',
+  'OSIP','ROMAN','GLEB','STEPAN','MAKAR','YURI','ZAKHAR','ILYA','GRIGOR','TARAS','DMITRI','BORIS',
+  'KIRA','LARA','PAVEL','SERGEI','ANTON','MAXIM','LEONID','RUSLAN','OLEG','DENIS','TIMUR','SAVELY',
+  'NADYA','MIKHAIL','ALEKSEI','RUDOLF','VADIM','EGOR','FILIPP','GENNADY','KLIM','LUKA','NAZAR'];
+const RANKWORDS = ['打手','巡逻','守卫','哨兵','卫兵','狙击','近卫','副官','队长'];
+let _nameI = 0;
+function pickName(rankBias){
+  const r = RANKWORDS[Math.min(RANKWORDS.length-1, rankBias)];
+  const n = FNAMES[_nameI % FNAMES.length]; _nameI++;
+  return `${r} · ${n}`;
+}
+
+// seeded RNG so a given level is identical every retry
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+function genLevel(tier){ // tier 1..7  -> levels 4..10
+  const rng = mulberry32(0x4242 + tier*97);
+  const rint=(a,b)=>Math.floor(a+rng()*(b-a+1));
+  const rfl=(a,b)=>a+rng()*(b-a);
+
+  const rooms = 3 + tier;                  // 4..10 rooms
+  const halfW = 6 + tier*1.2;              // room half-width grows
+  const roomDepth = 9 + tier*0.6;
+  const gap = 0.0;                          // rooms stacked back-to-back
+  const startZ = 9;
+  const walls=[], crates=[], doors=[], clues=[], enemies=[], waves=[], ammo=[];
+  const T2 = T;
+
+  // entry corridor
+  walls.push([0.6, 8, -2.6, startZ-1]); walls.push([0.6, 8, 2.6, startZ-1]);
+
+  let z = startZ - 5;                        // front edge of first room
+  let minX=-halfW-2, maxX=halfW+2, minZ=0, maxZ=startZ+2;
+  const roomCenters=[];
+
+  for(let r=0; r<rooms; r++){
+    const frontZ = z;                        // wall between previous space and this room
+    const backZ  = z - roomDepth;            // far wall of this room
+    const cz = (frontZ+backZ)/2;
+    // vary width a bit per room for irregularity, but keep within map bounds
+    const w = halfW * rfl(0.78, 1.0);
+    roomCenters.push({ x: rfl(-w*0.4, w*0.4), z: cz, w, frontZ, backZ });
+
+    // side walls of this room
+    walls.push([T2, roomDepth, -w, cz]);
+    walls.push([T2, roomDepth,  w, cz]);
+
+    // front wall with a doorway gap (skip for room 0 — corridor opens in)
+    const doorX = rfl(-w*0.5, w*0.5);
+    if(r===0){
+      // partial front wall flanking the corridor mouth
+      const segW = (w - 2.6)/2;
+      if(segW>0.6){
+        walls.push([segW, T2, -(2.6+segW/2)+0.0, frontZ]);
+        walls.push([segW, T2,  (2.6+segW/2)-0.0, frontZ]);
+      }
+    } else {
+      const gapHalf = 1.4;
+      const leftSegW = (doorX - gapHalf) - (-w);
+      const rightSegW = (w) - (doorX + gapHalf);
+      if(leftSegW>0.4) walls.push([leftSegW, T2, -w + leftSegW/2, frontZ]);
+      if(rightSegW>0.4) walls.push([rightSegW, T2, w - rightSegW/2, frontZ]);
+      doors.push([doorX, frontZ, 'x', 2.6]);
+    }
+
+    minX=Math.min(minX,-w-2); maxX=Math.max(maxX,w+2); minZ=Math.min(minZ,backZ-2);
+
+    // cover crates inside the room
+    const nCrates = rint(1, 2+Math.floor(tier/2));
+    for(let c=0;c<nCrates;c++){
+      crates.push([ rfl(1.3,1.7), rfl(-w*0.7,w*0.7), rfl(backZ+1.5, frontZ-1.5) ]);
+    }
+
+    // a clue in a couple of rooms
+    if(r===1 || r===rooms-2) clues.push([ rfl(-w*0.6,w*0.6), cz, '线索 · 据点情报' ]);
+    // ammo resupply roughly every 2nd room (off to one side, near cover)
+    if(r%2===1) ammo.push([ rfl(0.4,0.8)*w*(rng()<0.5?-1:1), cz + rfl(-2,2) ]);
+
+    z = backZ;                               // next room starts at this back wall
+  }
+  // far back wall of the whole complex
+  const lastW = roomCenters[roomCenters.length-1].w;
+  walls.push([lastW*2+ (halfW*0.6), T2, 0, z]);   // generous back wall
+  maxZ = startZ+2;
+
+  // --- initial enemy placement: spread across the FIRST half of rooms ---
+  const baseCount = 4 + tier;                 // 5..11 initial
+  for(let i=0;i<baseCount;i++){
+    const rm = roomCenters[rint(0, Math.max(0,Math.floor(rooms/2)) )];
+    enemies.push([ rm.x + rfl(-rm.w*0.6,rm.w*0.6), rm.z + rfl(-2,2), rng()*Math.PI*2, pickName(rint(0,3)) ]);
+  }
+
+  // --- reinforcement waves: emerge from the DEEP rooms, scale with tier ---
+  const nWaves = 1 + Math.floor(tier/2) + (tier>=5?1:0);   // 1..4 extra waves
+  for(let wv=0; wv<nWaves; wv++){
+    const rm = roomCenters[Math.min(roomCenters.length-1, Math.floor(rooms/2)+wv)];
+    const cnt = 3 + Math.floor(tier/2) + wv;                // grows per wave
+    const wl=[];
+    for(let i=0;i<cnt;i++){
+      wl.push([ rm.x + rfl(-rm.w*0.6,rm.w*0.6), rm.z + rfl(-2,2), rng()*Math.PI*2,
+                pickName(rint(1, Math.min(8, 3+tier))) ]);
+    }
+    // last wave of the last tier gets the boss
+    if(tier===7 && wv===nWaves-1){ wl[wl.length-1] = [rm.x, rm.z, 0, 'RAVEN']; }
+    waves.push({ from:{x:rm.x, z:rm.z}, enemies:wl });
+  }
+
+  // exit at the very back of the complex
+  const exit = { x: 0, z: z + 1.4 };
+
+  const codes=['04D','04E','04F','05A','05B','05C','05D'];
+  return {
+    name: `案件 ${codes[tier-1]} · ${['配电室','档案库','地下车库','通讯中枢','武器库','审讯区','RAVEN 巢穴'][tier-1]}`,
+    intel: `据点纵深扩大（${rooms} 个区域）。逐间推进，清光全部波次后从最深处出口撤离。`,
+    spawn: { x:0, z:startZ+1, yaw:Math.PI },
+    map: { minx:minX, maxx:maxX, minz:minZ, maxz:maxZ },
+    walls, crates, doors, clues, enemies, waves, exit, ammo,
+  };
+}
+
+for(let tier=1; tier<=7; tier++) LEVELS.push(genLevel(tier));
+
+let levelIndex = 0;
+
+// ---------- VERSUS arena (symmetric 1v1 deathmatch map) ----------
+const T3 = 0.25;
+const VS_ARENA = {
+  name:'死斗 · 暗仓',
+  map:{ minx:-16, maxx:16, minz:-16, maxz:16 },
+  // outer box + symmetric internal cover
+  walls:[
+    [32,T3,0,-15.5],[32,T3,0,15.5],[T3,31,-15.5,0],[T3,31,15.5,0],
+    // central cross pillars (with gaps so it stays open)
+    [6,T3,0,-5],[6,T3,0,5],[T3,6,-5,0],[T3,6,5,0],
+    // corner rooms
+    [T3,7,-8,-11],[7,T3,-11,-8], [T3,7,8,-11],[7,T3,11,-8],
+    [T3,7,-8,11],[7,T3,-11,8],   [T3,7,8,11],[7,T3,11,8],
+  ],
+  crates:[
+    [1.5,-6,-6],[1.5,6,6],[1.5,6,-6],[1.5,-6,6],
+    [1.4,0,-10],[1.4,0,10],[1.4,-10,0],[1.4,10,0],
+    [1.5,0,0],
+  ],
+  doors:[],
+  // four corner spawns: initial host/joiner take opposite corners; respawn picks the farthest from the foe
+  spawns:[ {x:-13,z:-13,yaw:Math.PI*0.75}, {x:13,z:13,yaw:-Math.PI*0.25},
+           {x:-13,z:13,yaw:Math.PI*0.25},  {x:13,z:-13,yaw:-Math.PI*0.75} ],
+  ammo:[ [-12,12],[12,-12],[0,-13],[0,13] ],
+};
+
+// remote-player avatar — looks like an enemy but tinted differently
+function makeFoe(){
+  const h = makeHumanoid(0xd11f1f);
+  const grp = h.grp;
+  const hitMat=new THREE.MeshBasicMaterial({visible:false});
+  const bodyHit=new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.42,1.6,8),hitMat); bodyHit.position.y=0.95;
+  const headHit=new THREE.Mesh(new THREE.SphereGeometry(0.34,8,6),hitMat); headHit.position.y=1.95;
+  grp.add(bodyHit,headHit);
+  scene.add(grp); trackObj(grp);
+  litLines.push({line:h.chest, base:new THREE.Color(0xd11f1f), center:grp.position, enemyPart:true, foe:true, grp});
+  return { grp, h, mat:h.mat, body:h.chest, head:h.head, bodyHit, headHit };
+}
+
+
+function clearLevel(){
+  // remove all tracked level objects from scene + dispose
+  for(const o of levelObjects){
+    scene.remove(o);
+    o.traverse?.(c=>{ c.geometry?.dispose?.(); if(c.material){ (Array.isArray(c.material)?c.material:[c.material]).forEach(m=>m.dispose?.()); } });
+    o.geometry?.dispose?.();
+    if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose?.()); }
+  }
+  levelObjects.length = 0;
+  litLines = [];
+  floorLines.forEach(o=>{ o._mem=0; o.line.material.opacity=0.12; });
+  colliders = [];
+  wallMeshes = [];
+  clues = [];
+  ammoCrates = [];
+  enemies = [];
+  vs.foe = null;
+  vs.snaps = [];
+  foeLight.active=false; foeLight.torchI=0; foeLight.flashI=0;
+  doors = [];
+  exit = null;
+}
+
+function loadLevel(i){
+  clearLevel();
+  const L = LEVELS[i];
+  (L.walls||[]).forEach(w=> wall(w[0],w[1],w[2],w[3], w[4]||3));
+  (L.crates||[]).forEach(c=> crate(c[0],c[1],c[2]));
+  (L.doors||[]).forEach(d=> addDoor(d[0],d[1],d[2]||'x',d[3]||1.5));
+  (L.clues||[]).forEach(c=> addClue(c[0],c[1],c[2]));
+  (L.ammo||[]).forEach(a=> addAmmo(a[0],a[1]));
+  (L.enemies||[]).forEach(e=> { makeEnemy(e[0],e[1],e[2]).name=e[3]; });
+  // queue reinforcement waves (deep copy so retries restore them)
+  pendingWaves = (L.waves||[]).map(w=>({ from:{...w.from}, enemies:w.enemies.map(e=>e.slice()) }));
+  waveCount = 1 + pendingWaves.length;
+  waveIndex = 0;
+  waveSpawnTimer = 0;
+  MAP = { minx:L.map.minx, maxx:L.map.maxx, minz:L.map.minz, maxz:L.map.maxz, size:200 };
+  exit = L.exit ? { x:L.exit.x, z:L.exit.z, r:1.4 } : null;
+  if(exit){
+    // green ring marker on the floor (hidden until level cleared)
+    const ring = new THREE.LineLoop(
+      new THREE.BufferGeometry().setFromPoints(
+        Array.from({length:33},(_,k)=>{ const a=k/32*Math.PI*2; return new THREE.Vector3(Math.cos(a)*exit.r, 0.05, Math.sin(a)*exit.r); })),
+      new THREE.LineBasicMaterial({ color:0x1aaa3c, transparent:true, opacity:0 }));
+    ring.position.set(exit.x,0,exit.z);
+    scene.add(ring); trackObj(ring);
+    exit.ring = ring;
+  }
+  // place player at spawn
+  player.pos.set(L.spawn.x, 1.6, L.spawn.z);
+  player.yaw = L.spawn.yaw; player.pitch = 0; player.peek = 0;
+  // reset intel panel
+  document.querySelector('#intel .head').textContent = L.name;
+  document.querySelector('#intel .body').innerHTML = L.intel;
+  exitReached = false;
+  initSquad();
+}
+
+function loadArena(){
+  clearLevel();
+  const A = VS_ARENA;
+  A.walls.forEach(w=> wall(w[0],w[1],w[2],w[3]));
+  A.crates.forEach(c=> crate(c[0],c[1],c[2]));
+  A.ammo.forEach(a=> addAmmo(a[0],a[1]));
+  MAP = { minx:A.map.minx, maxx:A.map.maxx, minz:A.map.minz, maxz:A.map.maxz, size:200 };
+  exit = null; pendingWaves=[]; waveCount=1; waveIndex=0;
+  vs.spawns = A.spawns;
+  // host takes spawn 0, joiner spawn 1
+  const myIdx = NET.isHost ? 0 : 1;
+  const sp = A.spawns[myIdx];
+  player.pos.set(sp.x, 1.6, sp.z); player.yaw=sp.yaw; player.pitch=0; player.peek=0;
+  // foe avatar
+  vs.foe = makeFoe();
+  const fsp = A.spawns[1-myIdx];
+  vs.foeState = { x:fsp.x, z:fsp.z, yaw:fsp.yaw, torch:false, alive:true, peek:0 };
+  vs.foe.grp.position.set(fsp.x,0,fsp.z);
+  document.querySelector('#intel .head').textContent = '局域网死斗';
+  document.querySelector('#intel .body').innerHTML = `先达成 ${vs.target} 杀获胜。开手电看得清但会暴露——黑暗中猎杀对手。`;
+  initSquad();
+}
+
+const gun = {
+  mag:12, magMax:12, reserve:36,
+  reloading:false, reloadT:0,
+  cooldown:0, fireRate:0.16,
+  spread:0.045, aimSpread:0.012, recoil:0,
+  ads:false,
+};
+
+// ============================================================
+//  第一人称视模 —— 自己的手与枪，跟随键鼠动作：
+//  WASD 行走起伏 / 左键后坐上跳 / R 换弹收枪 / 右键精瞄居中收稳 / T 手电从左侧举起
+// ============================================================
+scene.add(camera);   // 视模挂在相机上，需要相机进入场景图
+const viewModel = (()=>{
+  const mat = new THREE.LineBasicMaterial({ color:0x16181c, transparent:true, opacity:0.95, fog:false });
+  const torchMat = new THREE.LineBasicMaterial({ color:0x8a5a10, transparent:true, opacity:0.95, fog:false });
+  const grp = new THREE.Group();
+  const seg=(parent,w,h,d,x,y,z,m)=>{
+    const l=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w,h,d)), m||mat);
+    l.position.set(x,y,z); parent.add(l); return l;
+  };
+  // 持枪右手（屏幕右下，枪管指向 -z 即视线方向）
+  const gunGrp=new THREE.Group();
+  seg(gunGrp, 0.050,0.052,0.20, 0.014,-0.075,0.13);  // 小臂
+  seg(gunGrp, 0.055,0.070,0.08, 0,-0.038,0.030);     // 手
+  seg(gunGrp, 0.032,0.050,0.21, 0,0.016,-0.060);     // 套筒/枪管
+  seg(gunGrp, 0.030,0.078,0.046, 0,-0.036,0.016);    // 握把
+  grp.add(gunGrp);
+  // 手电左手（T 开启时举起进入视野）
+  const torchGrp=new THREE.Group();
+  seg(torchGrp, 0.050,0.050,0.16, 0,0,0.10);             // 持电筒的手臂
+  seg(torchGrp, 0.058,0.058,0.11, 0,0.004,-0.040, torchMat); // 电筒筒身
+  grp.add(torchGrp);
+  camera.add(grp);
+  return { grp, gunGrp, torchGrp, phase:0, adsT:0, torchT:0 };
+})();
+const VM_HIP  = new THREE.Vector3(0.235,-0.215,-0.46);
+const VM_ADS  = new THREE.Vector3(0.0,  -0.150,-0.40);
+const VM_T_ON = new THREE.Vector3(-0.21,-0.205,-0.43);
+const VM_T_OFF= new THREE.Vector3(-0.27,-0.46, -0.43);
+function updateViewModel(dt){
+  const vm=viewModel;
+  vm.grp.visible = running && !paused && player.alive;
+  if(!vm.grp.visible) return;
+  vm.adsT   += ((gun.ads?1:0)  -vm.adsT  )*Math.min(1,dt*12);
+  vm.torchT += ((torch.on?1:0) -vm.torchT)*Math.min(1,dt*9);
+  // CQB ready：接敌(近期开火/精瞄)→枪抬平；否则 low-ready 压低枪口
+  const engaged = player.engagedT>0 || gun.ads;
+  vm.readyT = (vm.readyT===undefined?0:vm.readyT) + ((engaged?1:0)-(vm.readyT||0))*Math.min(1,dt*7);
+  const moving = !!(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD);
+  if(moving) vm.phase += dt*(keys.ShiftLeft?4.5:7.5);
+  const bobA = (moving?1:0)*(1-vm.adsT*0.85);   // 精瞄时几乎不晃
+  // 枪位：腰射→精瞄插值 + 行走起伏 + 后坐回拉
+  vm.gunGrp.position.lerpVectors(VM_HIP, VM_ADS, vm.adsT);
+  vm.gunGrp.position.x += Math.cos(vm.phase)*0.009*bobA;
+  vm.gunGrp.position.y += Math.abs(Math.sin(vm.phase))*0.011*bobA;
+  vm.gunGrp.position.z += gun.recoil*0.5;
+  // low-ready：未接敌时枪口下压并略微收向身侧（不破坏精瞄）
+  const lowAmt=(1-vm.readyT)*(1-vm.adsT);
+  vm.gunGrp.position.y -= lowAmt*0.085;
+  vm.gunGrp.position.z += lowAmt*0.05;
+  // 后坐上跳；换弹时整枪下收再抬起
+  let rx = gun.recoil*2.6 + lowAmt*0.5;   // low-ready 枪口下指
+  if(gun.reloading){
+    const t = 1 - Math.max(0,gun.reloadT)/1.4;
+    const dip = Math.sin(Math.min(1,t*1.12)*Math.PI);
+    rx -= dip*1.05;
+    vm.gunGrp.position.y -= dip*0.10;
+    vm.gunGrp.position.x += dip*0.03;
+  }
+  vm.gunGrp.rotation.x = rx;
+  vm.gunGrp.rotation.z = -player.peek*0.10;
+  // 手电：开关时从画面左下举起/收下
+  vm.torchGrp.position.lerpVectors(VM_T_OFF, VM_T_ON, vm.torchT);
+  vm.torchGrp.position.y += Math.abs(Math.sin(vm.phase))*0.008*bobA;
+}
+
+const ui = {
+  ammoNum: document.getElementById('ammoNum'),
+  reserveNum: document.getElementById('reserveNum'),
+  reloadStat: document.getElementById('reloadStat'),
+  torchStat: document.getElementById('torchStat'),
+  stanceStat: document.getElementById('stanceStat'),
+  ecount: document.getElementById('ecount'),
+  cross: document.getElementById('cross'),
+};
+function ammoFlash(){
+  const el=document.getElementById('ammo');
+  if(!el) return;
+  el.classList.remove('resupply'); void el.offsetWidth; el.classList.add('resupply');
+  const r=document.getElementById('radio');
+  if(r){ const m=document.createElement('div'); m.className='msg'; m.innerHTML='<b>补给</b> 弹药已补满'; r.appendChild(m);
+    while(r.children.length>4) r.removeChild(r.firstChild);
+    setTimeout(()=>{ m.style.transition='opacity .5s'; m.style.opacity='0'; setTimeout(()=>m.remove(),500); },2200); }
+}
+function syncHUD(){
+  ui.ammoNum.textContent = gun.mag;
+  ui.ammoNum.classList.toggle('low', gun.mag<=3);
+  ui.reserveNum.textContent = gun.reserve;
+  ui.reloadStat.textContent = gun.reloading ? '换弹中…' : '';
+  ui.torchStat.textContent = '手电 [T] · ' + (torch.on?'开（暴露！）':'关');
+  ui.torchStat.classList.toggle('on', torch.on);
+  if(gameMode==='versus'){
+    ui.ecount.textContent = `${vs.myKills}:${vs.foeKills}`;
+    ui.ecount.classList.toggle('clear', vs.myKills>vs.foeKills);
+    const wl=document.getElementById('wavelabel');
+    if(wl) wl.textContent = `首达 ${vs.target} 杀`;
+    return;
+  }
+  const alive = enemies.filter(e=>e.alive).length;
+  ui.ecount.textContent = alive;
+  ui.ecount.classList.toggle('clear', alive===0);
+  const wl=document.getElementById('wavelabel');
+  if(wl) wl.textContent = waveCount>1 ? `波次 ${waveIndex+1}/${waveCount}` : '';
+}
+
+// ---------- input ----------
+const keys = {};
+let mapOn = true;
+let running=false;
+let paused=false;
+let exitReached=false;
+addEventListener('keydown', e=>{
+  keys[e.code]=true;
+  // pause toggle (campaign only — versus is a live match)
+  if(e.code==='KeyP' && (running||paused) && player.alive){
+    if(gameMode==='versus'){ showVsBanner('对战中无法暂停', '#b06a00'); return; }
+    togglePause(); return;
+  }
+  if(!running) return;
+  if(e.code==='KeyT'){ torch.on=!torch.on; SFX.torchToggle(torch.on); syncHUD(); }
+  if(e.code==='KeyR') startReload();
+  if(e.code==='KeyF') tryInteract();
+  if(e.code==='KeyM'){ mapOn=!mapOn; document.getElementById('minimap').classList.toggle('off',!mapOn); }
+});
+addEventListener('keyup', e=> keys[e.code]=false);
+
+canvas.addEventListener('mousedown', e=>{
+  if(!running || paused || !player.alive) return;
+  if(e.button===0) fire();
+  if(e.button===2){ gun.ads=true; }
+});
+addEventListener('mouseup', e=>{ if(e.button===2) gun.ads=false; });
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
+
+addEventListener('mousemove', e=>{
+  if(!running || document.pointerLockElement!==canvas) return;
+  const sens = gun.ads?0.0011:0.0022;
+  player.yaw   -= e.movementX*sens;
+  player.pitch -= e.movementY*sens;
+  player.pitch = Math.max(-1.2, Math.min(1.2, player.pitch));
+});
+
+// ---------- actions ----------
+let muzzleFlashT = 0;
+function fire(){
+  if(gun.reloading || gun.cooldown>0) return;
+  if(gun.mag<=0){ SFX.click(); startReload(); return; }
+  gun.mag--; gun.cooldown=gun.fireRate;
+  player.engagedT = 2.0;   // 开火 → 进入接敌姿态
+  SFX.gunshot();
+  gun.recoil = Math.min(0.12, gun.recoil+0.05);
+  muzzleFlashT = 0.07;
+  // muzzle flash light reveals environment
+  flashLight.position.copy(camera.position);
+  flashLight.intensity = 6;
+  document.getElementById('flash').style.opacity='1';
+  setTimeout(()=>document.getElementById('flash').style.opacity='0',45);
+
+  // raycast with current spread — use the camera's ACTUAL world direction
+  const moving = (keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD);
+  let s = gun.ads? gun.aimSpread : gun.spread;
+  if(moving) s*=2.2;
+  s += gun.recoil*0.4;
+  const dir = camDir();
+  dir.x += (Math.random()-0.5)*s;
+  dir.y += (Math.random()-0.5)*s;
+  dir.z += (Math.random()-0.5)*s;
+  dir.normalize();
+  _ray.set(camera.position, dir);
+  const ray = _ray;
+  // nearest wall distance along the shot (so you can't shoot through walls)
+  let wallDist = Infinity;
+  const wallHits = ray.intersectObjects(wallMeshes, false);
+  if(wallHits.length) wallDist = wallHits[0].distance;
+
+  if(gameMode==='versus'){
+    // 命中检测 + 弹道终点（墙 / 对手 / 60m 上限取最近）
+    let endDist = Math.min(wallDist, 60);
+    let foeHit = null;
+    if(vs.foe && vs.foeState.alive){
+      const hits=ray.intersectObjects([vs.foe.headHit, vs.foe.bodyHit], false);
+      if(hits.length && hits[0].distance<wallDist){
+        foeHit = hits[0];
+        endDist = hits[0].distance;
+      }
+    }
+    const ex=camera.position.x+dir.x*endDist, ey=camera.position.y+dir.y*endDist, ez=camera.position.z+dir.z*endDist;
+    spawnOwnTracer(dir, ex,ey,ez);
+    if(endDist<60) spawnImpact(ex,ey,ez, foeHit?2.2:3.2);
+    // 把弹道终点同步给对手：对方画出射向他的曳光，可反向追溯我的方位
+    NET.send({ t:'shot', ex:+ex.toFixed(2), ey:+ey.toFixed(2), ez:+ez.toFixed(2) });
+    if(foeHit){
+      const head = foeHit.object===vs.foe.headHit;
+      const dmg = head?100:45;
+      NET.send({ t:'hit', d:dmg, head });   // victim applies & is authoritative for death
+      // local hit feedback
+      vs.foe.body.material.color.set(head?0xff3b3b:0xff7a4d);
+      setTimeout(()=>{ if(vs.foe) vs.foe.body.material.color.set(0xd11f1f); },120);
+      SFX.kill(head);
+    }
+    syncHUD();
+    return;
+  }
+
+  // hit enemies (head vs body) via solid hitboxes
+  let best=null, bestDist=Infinity, bestHead=false;
+  for(const en of enemies){
+    if(!en.alive) continue;
+    const objs=[en.headHit, en.bodyHit];
+    const hits = ray.intersectObjects(objs, false);
+    if(hits.length){
+      if(hits[0].distance<bestDist){
+        bestDist=hits[0].distance; best=en;
+        bestHead = hits[0].object===en.headHit;
+      }
+    }
+  }
+  // 弹道曳光与弹着点（战役）
+  {
+    const endDist = Math.min(wallDist, best?bestDist:Infinity, 60);
+    const ex=camera.position.x+dir.x*endDist, ey=camera.position.y+dir.y*endDist, ez=camera.position.z+dir.z*endDist;
+    spawnOwnTracer(dir, ex,ey,ez);
+    if(endDist<60) spawnImpact(ex,ey,ez, (best&&bestDist<wallDist)?2.2:3.2);
+  }
+  if(best && bestDist < wallDist){   // only if no wall is in the way
+    hitEnemy(best, bestHead);
+  }
+  syncHUD();
+}
+// 自己的曳光从枪口（视模位置附近）射出，而不是从眼睛正中
+function spawnOwnTracer(dir, ex,ey,ez){
+  const rx=Math.cos(player.yaw), rz=-Math.sin(player.yaw);   // 右方向
+  const ox=camera.position.x + rx*0.16*(1-viewModel.adsT) + dir.x*0.3;
+  const oy=camera.position.y - 0.14 + viewModel.adsT*0.05 + dir.y*0.3;
+  const oz=camera.position.z + rz*0.16*(1-viewModel.adsT) + dir.z*0.3;
+  spawnTracer(ox,oy,oz, ex,ey,ez, 0x2a2a2a);
+}
+function hitEnemy(en, head){
+  const dmg = head ? 100 : 45;     // headshot = instant kill, body = ~2-3 shots
+  en.hp = Math.max(0, en.hp - dmg);
+  SFX.kill(head); // hit sound
+  // flash the enemy lines red on impact (全身共享材质，一次设置即可)
+  en.mat.color.set(head?0xff3b3b:0xff7a4d);
+  setTimeout(()=>{ if(en.alive) en.mat.color.set(COL.enemy); }, 120);
+  showEnemyHP(en);
+  // being hit instantly shares the player's position with the whole squad
+  en.state='alert';
+  squad.lastKnown = { x:player.pos.x, z:player.pos.z };
+  squad.lastKnownAge = 0;
+  if(!squad.engaged){ squad.engaged=true; radio(en.name, '我中弹了！敌人在那边！', true); }
+  squad.cmdTimer = 0;
+  if(en.hp<=0) killEnemy(en, head);
+}
+function killEnemy(en, head){
+  en.alive=false;
+  SFX.kill(head);
+  // collapse: drop & fade to red briefly then vanish lines
+  en.mat.color.set(head?0xff3b3b:0xff7a4d);
+  // 倒地姿态：四肢摊开
+  if(en.h){ en.h.armR.rotation.x=0.9; en.h.armL.rotation.x=0.4; en.h.legL.rotation.x=0.3; en.h.legR.rotation.x=-0.2; }
+  // sink
+  const start=performance.now();
+  const fall=()=>{
+    const t=(performance.now()-start)/600;
+    if(t>=1){ en.grp.visible=false; return; }
+    en.grp.rotation.z = t*Math.PI*0.5*(en.x<0?1:-1);
+    en.grp.position.y = -t*0.4;
+    en.mat.opacity = 0.9*(1-t);
+    requestAnimationFrame(fall);
+  };
+  fall();
+  // a kill reveals the shooter's position to the whole squad
+  squad.lastKnown = { x:player.pos.x, z:player.pos.z };
+  squad.lastKnownAge = 0; squad.engaged = true;
+  const wasLeader = en.isLeader;
+  en.isLeader=false; if(en.crown) en.crown.material.opacity=0;
+  const remaining = enemies.filter(e=>e.alive).length;
+  if(remaining>0){
+    if(wasLeader){
+      assignLeader();
+      if(squad.leader) radio(squad.leader.name, '队长阵亡 · 我来指挥！', true);
+    } else if(Math.random()<0.6){
+      const spk = squad.leader && squad.leader.alive ? squad.leader.name : en.name;
+      radio(spk, remaining===1?'只剩我了…':'有人倒下！压住他！', true);
+    }
+  }
+  squad.cmdTimer = 0; // force immediate re-plan
+  syncHUD();
+  // clearing the room reveals the exit (handled in updateExit)
+}
+function startReload(){
+  if(gun.reloading || gun.mag===gun.magMax || gun.reserve<=0) return;
+  gun.reloading=true; gun.reloadT=1.4; SFX.reload(); syncHUD();
+  if(gameMode==='versus') NET.send({t:'rel'});
+}
+function tryInteract(){
+  // nearest door within reach
+  let nd=null, ndDist=2.6;
+  for(const d of doors){
+    const dist=Math.hypot(player.pos.x-d.x, player.pos.z-d.z);
+    if(dist<ndDist){ ndDist=dist; nd=d; }
+  }
+  if(nd){
+    nd.open=!nd.open; nd.target = nd.open? -Math.PI*0.62 : 0; SFX.door();
+  }
+  // clues
+  for(const c of clues){
+    if(!c.found && Math.hypot(player.pos.x-c.x, player.pos.z-c.z)<1.6){
+      c.found=true; if(c.ll) c.ll.found=true; SFX.pickup();
+      const intel=document.querySelector('#intel .body');
+      intel.innerHTML += `<br><span style="color:#b06a00">▸ ${c.label}</span>`;
+    }
+  }
+}
+
+// ---------- helpers ----------
+function camFwd(){
+  // true world-space direction the camera is looking (camera looks down -Z)
+  const v = new THREE.Vector3();
+  camera.getWorldDirection(v);
+  return v;
+}
+function camDir(){ return camFwd(); }
+// 共享 Raycaster：射击与准星检测每帧复用，避免反复分配
+const _ray = new THREE.Raycaster();
+_ray.near = 0; _ray.far = 60;
+function collide(nx,nz){
+  const r=0.3;
+  for(const c of colliders){
+    if(nx>c.minx-r && nx<c.maxx+r && nz>c.minz-r && nz<c.maxz+r) return true;
+  }
+  return false;
+}
+
+// ---------- enemy AI ----------
+function canSeePlayer(en){
+  const dx=player.pos.x-en.x, dz=player.pos.z-en.z;
+  const dist=Math.hypot(dx,dz);
+  // torch ON makes the player easier to spot, but vision is much weaker in the dark
+  const lit = torch.on;
+  const maxDist = lit? 14 : 7.5;       // dark: short range; lit: roughly old range
+  if(dist>maxDist) return false;
+  const ang=Math.atan2(dx,dz);
+  let diff=Math.abs(((ang-en.facing+Math.PI*3)%(Math.PI*2))-Math.PI);
+  let fov = en.state==='idle'? 0.5 : 0.85;   // narrower cones than before
+  if(lit) fov += 0.35;                       // torch widens it, but less drastically
+  // a lit player very close behind still betrays them (peripheral glow)
+  const peripheral = lit && dist < 5;
+  if(diff>fov && !peripheral) return false;
+  // real wall occlusion — cast from enemy eye toward player against solid walls
+  _losOrigin.set(en.x,1.5,en.z);
+  _losDir.set(player.pos.x-en.x, (player.pos.y)-1.5, player.pos.z-en.z).normalize();
+  _rayLOS.set(_losOrigin, _losDir);
+  _rayLOS.far = dist-0.3;
+  if(_rayLOS.intersectObjects(wallMeshes,false).length) return false; // wall in the way
+  return true;
+}
+// 敌人视线检测专用的共享 Raycaster / 向量（每帧每敌人调用，避免反复分配）
+const _rayLOS = new THREE.Raycaster();
+const _losOrigin = new THREE.Vector3();
+const _losDir = new THREE.Vector3();
+function moveEnemy(en, tx, tz, speed, dt){
+  const dx=tx-en.x, dz=tz-en.z; const d=Math.hypot(dx,dz);
+  if(d<0.05) return;
+  const ux=dx/d, uz=dz/d;
+  const nx=en.x+ux*speed*dt, nz=en.z+uz*speed*dt;
+  // wall-slide: try full move, then x-only, then z-only
+  if(!collide(nx,nz)){ en.x=nx; en.z=nz; }
+  else if(!collide(nx,en.z)){ en.x=nx; }
+  else if(!collide(en.x,nz)){ en.z=nz; }
+  en.grp.position.set(en.x,0,en.z);
+}
+// radio chatter feed (deterministic templates, no LLM)
+let radioCd = 0;
+function radio(who, text, force){
+  if(!force && radioCd>0) return;
+  radioCd = 1.2;
+  const feed=document.getElementById('radio');
+  const el=document.createElement('div');
+  el.className='msg';
+  el.innerHTML = `<b>${who}</b> ${text}`;
+  feed.appendChild(el);
+  while(feed.children.length>4) feed.removeChild(feed.firstChild);
+  setTimeout(()=>{ el.style.transition='opacity .5s'; el.style.opacity='0'; setTimeout(()=>el.remove(),500); }, 3800);
+}
+
+// separation vector: push away from nearby squadmates (anti-clumping)
+function separation(en){
+  let sx=0, sz=0;
+  for(const o of enemies){
+    if(o===en || !o.alive) continue;
+    const dx=en.x-o.x, dz=en.z-o.z; const d=Math.hypot(dx,dz);
+    if(d>0.01 && d<2.2){ sx += dx/d*(2.2-d)/2.2; sz += dz/d*(2.2-d)/2.2; }
+  }
+  return [sx, sz];
+}
+
+// leader issues orders on a cadence: who engages, who flanks, who advances
+function leaderCommand(dt){
+  squad.cmdTimer-=dt;
+  if(!squad.leader || !squad.leader.alive) assignLeader();
+  const L=squad.leader; if(!L) return;
+  if(squad.cmdTimer>0) return;
+  squad.cmdTimer = 0.45;     // re-plan ~2x/sec, cheap
+  const alive=enemies.filter(e=>e.alive);
+  if(!squad.lastKnown){       // no intel: everyone holds & scans
+    alive.forEach(e=> e.role='hold');
+    return;
+  }
+  // sort by distance to last-known player pos; nearest engages, rest flank/advance
+  const lk=squad.lastKnown;
+  alive.sort((a,b)=> Math.hypot(a.x-lk.x,a.z-lk.z)-Math.hypot(b.x-lk.x,b.z-lk.z));
+  let flankToggle=1;
+  alive.forEach((e,idx)=>{
+    if(idx===0) e.role='engage';                 // closest: pin the player down
+    else if(idx<=2){ e.role='flank'; e.flankSign=flankToggle; flankToggle*=-1; } // next two: pincer
+    else e.role='advance';                        // rest: push up
+  });
+  // leader prefers to direct rather than rush: if leader isn't nearest, hang back a touch
+  if(L.role==='advance') L.role='advance';
+}
+
+function updateEnemies(dt){
+  if(radioCd>0) radioCd-=dt;
+  // ---- 1. perception + shared intel ----
+  let anyContact=false;
+  squad.lastKnownAge += dt;
+  for(const en of enemies){
+    if(!en.alive){ if(en.crown) en.crown.material.opacity=0; continue; }
+    en.fireCd-=dt; en.strafeTimer-=dt; en.repathTimer-=dt;
+    en._sees = canSeePlayer(en);
+    if(en._sees){
+      anyContact=true;
+      squad.lastKnown = { x:player.pos.x, z:player.pos.z };
+      squad.lastKnownAge = 0;
+      en.lastSeen = player.pos.clone();
+      if(!squad.engaged){           // first contact this fight
+        squad.engaged=true;
+        const L=squad.leader;
+        radio(en.name, '发现目标！', true);
+        if(L && L!==en) setTimeout(()=>radio(L.name, '收到 · 包抄上去，别让他切角', true), 700);
+      }
+    }
+  }
+  // intel decays: lose the trail after a while
+  if(squad.lastKnownAge>7){ squad.lastKnown=null; squad.engaged=false; }
+  // background Morse reflects combat state
+  SFX.setMusicMode(squad.engaged ? 'combat' : 'calm');
+
+  // ---- 2. leader assigns roles ----
+  leaderCommand(dt);
+
+  // crown pulse for leader (only as visible as the leader's body is lit)
+  if(squad.leader && squad.leader.alive && squad.leader.crown){
+    const bodyOp = squad.leader.body.material.opacity;
+    squad.leader.crown.material.opacity = (0.4+0.3*Math.sin(performance.now()*0.005)) * Math.min(1,bodyOp*1.5);
+  }
+
+  // ---- 3. each enemy acts per role ----
+  for(const en of enemies){
+    if(!en.alive) continue;
+    const dx=player.pos.x-en.x, dz=player.pos.z-en.z;
+    const dist=Math.hypot(dx,dz);
+    const [sx,sz]=separation(en);
+    const lk=squad.lastKnown;
+
+    if(en._sees){
+      // direct line of sight: face + shoot, maneuver depends on role
+      en.state='alert';
+      en.facing += angleDiff(Math.atan2(dx,dz), en.facing)*Math.min(1,dt*12);
+      const ux=dx/(dist||1), uz=dz/(dist||1);
+      const px=-uz, pz=ux;
+      if(en.strafeTimer<=0){ en.strafeTimer=0.5+Math.random()*0.8; if(Math.random()<0.4) en.strafeDir*=-1; }
+      let mvx=sx*1.4, mvz=sz*1.4;  // always respect separation
+      if(en.role==='engage'){
+        if(dist>7){ mvx+=ux; mvz+=uz; } else if(dist<3.5){ mvx-=ux; mvz-=uz; }
+        mvx += px*en.strafeDir*0.9; mvz += pz*en.strafeDir*0.9;
+      } else if(en.role==='flank'){
+        // arc around to the player's side/rear
+        mvx += px*en.flankSign*1.1 + ux*0.4;
+        mvz += pz*en.flankSign*1.1 + uz*0.4;
+      } else { // advance/hold but in sight → press in
+        if(dist>4){ mvx+=ux; mvz+=uz; }
+        mvx += px*en.strafeDir*0.5; mvz += pz*en.strafeDir*0.5;
+      }
+      const ml=Math.hypot(mvx,mvz)||1;
+      moveEnemy(en, en.x+mvx/ml, en.z+mvz/ml, en.role==='flank'?3.8:3.3, dt);
+      if(en.fireCd<=0){
+        en.fireCd=0.9+Math.random()*0.6;
+        SFX.enemyShot(dist);
+        const hitChance=Math.max(0.12, 0.5-dist*0.035);
+        en.mat.opacity=Math.min(1,en.mat.opacity+0.5);   // 枪口闪光暴露自身
+        en.h.anim.recoil=1;                              // 持枪臂后坐
+        const landed = Math.random()<hitChance;
+        // 来向曳光：从敌人枪口射来。命中→射向胸口；未中→从身侧/头顶掠过
+        {
+          const fwd2x=Math.sin(en.grp.rotation.y), fwd2z=Math.cos(en.grp.rotation.y);
+          const ox=en.x+fwd2x*0.6, oy=1.46, oz=en.z+fwd2z*0.6;
+          let tx=player.pos.x, ty=1.35, tz=player.pos.z;
+          if(!landed){
+            const px2=fwd2z, pz2=-fwd2x;                       // 垂直于射向
+            const off=(0.45+Math.random()*0.9)*(Math.random()<0.5?-1:1);
+            tx+=px2*off; tz+=pz2*off; ty+=Math.random()*0.8-0.2;
+          }
+          let ddx=tx-ox, ddy=ty-oy, ddz=tz-oz;
+          const dl=Math.hypot(ddx,ddy,ddz)||1;
+          const over=dl+2.5;                                   // 越过目标继续飞一段
+          const ex2=ox+ddx/dl*over, ey2=oy+ddy/dl*over, ez2=oz+ddz/dl*over;
+          spawnTracer(ox,oy,oz, ex2,ey2,ez2, 0x8a1414);
+          spawnImpact(ex2,ey2,ez2, 2.0);
+        }
+        if(landed) damagePlayer(16+Math.random()*13);
+      }
+    } else if(lk){
+      // no direct sight but squad has intel → move on shared last-known pos by role
+      en.state='search';
+      let tx=lk.x, tz=lk.z;
+      if(en.role==='flank'){
+        // approach the intel point from a flanking offset so they don't all funnel in
+        const toa=Math.atan2(lk.x-en.x, lk.z-en.z);
+        tx = lk.x + Math.cos(toa+Math.PI/2)*en.flankSign*3.5;
+        tz = lk.z - Math.sin(toa+Math.PI/2)*en.flankSign*3.5;
+      }
+      let mvx=(tx-en.x), mvz=(tz-en.z);
+      const d=Math.hypot(mvx,mvz)||1; mvx/=d; mvz/=d;
+      mvx+=sx*1.2; mvz+=sz*1.2;
+      const ml=Math.hypot(mvx,mvz)||1;
+      if(Math.hypot(lk.x-en.x,lk.z-en.z)>0.8) moveEnemy(en, en.x+mvx/ml, en.z+mvz/ml, 4.2, dt);
+      en.facing += angleDiff(Math.atan2(lk.x-en.x,lk.z-en.z),en.facing)*Math.min(1,dt*8);
+    } else {
+      // no intel: hold position, scan; small separation drift
+      en.state='idle';
+      if(Math.hypot(sx,sz)>0.1){ moveEnemy(en, en.x+sx, en.z+sz, 1.5, dt); }
+      en.facing += Math.sin(performance.now()*0.0004 + en.x)*dt*0.5;
+    }
+    en.grp.rotation.y = en.facing;
+    // CQB 状态：看见玩家 = 接敌(high-ready 据枪)，并按高差俯仰瞄准；否则 low-ready 压枪巡逻
+    let aimPitch=0;
+    if(en._sees){
+      const dx2=player.pos.x-en.x, dz2=player.pos.z-en.z;
+      aimPitch = Math.atan2((player.pos.y-1.5), Math.hypot(dx2,dz2)||1)*0.6;
+    }
+    animateHumanoid(en.h, dt, aimPitch, 0, false,
+      { engaged: en._sees || en.state==='alert', wall: nearWallSide(en.x, en.z, en.facing) });
+  }
+}
+// 贴墙依托检测：身体左右 0.6m 内有碰撞体 → 返回该侧(-1左/+1右)，无则 0
+function nearWallSide(x, z, facing){
+  const rx=Math.cos(facing), rz=-Math.sin(facing);   // 右方向
+  for(const s of [1,-1]){
+    const px=x+rx*0.6*s, pz=z+rz*0.6*s;
+    for(const c of colliders){
+      if(px>c.minx-0.1 && px<c.maxx+0.1 && pz>c.minz-0.1 && pz<c.maxz+0.1) return s;
+    }
+  }
+  return 0;
+}
+function angleDiff(a,b){ return ((a-b+Math.PI*3)%(Math.PI*2))-Math.PI; }
+
+// ---------- player health ----------
+let hp=100;
+function updateHealthHUD(){
+  const f=document.getElementById('hfill'), n=document.getElementById('hpnum');
+  if(!f) return;
+  const pct=Math.max(0,hp);
+  f.style.width=pct+'%';
+  n.textContent=Math.ceil(pct);
+  // color shifts green → amber → red as health drops
+  f.style.background = hp>60? '#1aaa3c' : hp>30? '#b06a00' : '#d11f1f';
+}
+function damagePlayer(d){
+  if(!player.alive) return;
+  hp-=d; SFX.hit();
+  updateHealthHUD();
+  const hit=document.getElementById('hit');
+  hit.style.opacity='1'; setTimeout(()=>hit.style.opacity='0',140);
+  if(hp<=0){ hp=0; updateHealthHUD(); lose(); }
+}
+
+// ---------- lighting reveal update ----------
+const _v = new THREE.Vector3();
+const _n = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
+function revealLine(o, fwd, dt, torchI, flashI){
+  if(o.grp) o.center.copy(o.grp.position);
+  const toC=_v.copy(o.center).sub(camera.position);
+  const dist=toC.length();
+  let reveal=0;
+  reveal += Math.max(0, 1 - dist/5.0)*1.0;
+  reveal += Math.max(0, 1 - dist/9.0)*0.35;
+  if(torchI>0.2 && dist>0.0001){
+    _n.copy(toC).multiplyScalar(1/dist);
+    const dot=_n.dot(fwd);
+    if(dot>0.18){
+      const coneFall=(dot-0.18)/0.82;
+      const distFall=Math.max(0,1-dist/32);
+      reveal += coneFall*distFall*(torchI/9)*3.4;
+    }
+  }
+  if(flashI>0.5) reveal += Math.max(0,1-dist/12)*Math.min(1,flashI/4);
+  // —— 对手的手电锥与枪口闪光：以对手为原点照亮周围线框 ——
+  if(foeLight.active && (foeLight.torchI>0.2 || foeLight.flashI>0.5)){
+    const toF=_v2.copy(o.center).sub(foeLight.pos);
+    const fd=toF.length();
+    if(foeLight.torchI>0.2 && fd>0.0001){
+      const dot2=toF.multiplyScalar(1/fd).dot(foeLight.fwd);
+      if(dot2>0.18){
+        reveal += ((dot2-0.18)/0.82)*Math.max(0,1-fd/32)*(foeLight.torchI/9)*3.4;
+      }
+    }
+    if(foeLight.flashI>0.5) reveal += Math.max(0,1-fd/12)*Math.min(1,foeLight.flashI/4);
+  }
+  // 弹着点微光：子弹命中处短暂照亮附近线框（侦察弹玩法）
+  for(let ii=0;ii<IMPACT_N;ii++){
+    const s=impacts[ii];
+    if(s.i<=0.4) continue;
+    const ddx=o.center.x-s.x, ddy=o.center.y-s.y, ddz=o.center.z-s.z;
+    const id=Math.sqrt(ddx*ddx+ddy*ddy+ddz*ddz);
+    reveal += Math.max(0,1-id/6)*Math.min(1,s.i/3.5)*0.9;
+  }
+  // 对手自身：开手电 / 开枪瞬间会把自己照亮（暴露机制）
+  if(o.foe && foeLight.active){
+    if(foeLight.torchI>0.2) reveal=Math.max(reveal, Math.min(1,foeLight.torchI/14)*0.95);
+    if(foeLight.flashI>0.5) reveal=1;
+  }
+  const target=Math.min(1,reveal);
+  if(o.enemyPart){
+    const ec=o.line.material.opacity;
+    o.line.material.opacity = ec + (Math.max(target, o.line.material.opacity*0.85*(target<0.05?0:1)) - ec)*Math.min(1,dt*9);
+    if(target<0.04) o.line.material.opacity *= 0.9;
+    return;
+  }
+  let cur=o.line.material.opacity;
+  const floor = o.clue? (o.found?0.6:0.10) : 0.12;
+  o._mem = Math.max(o._mem||floor, target>0.3? target*0.5 : 0);
+  cur += (Math.max(target, o._mem*0.65, floor) - cur)*Math.min(1,dt*12);
+  o.line.material.opacity = cur;
+}
+function updateReveal(dt){
+  torchLight.position.copy(camera.position);
+  torchLight.target.position.copy(camera.position).add(camFwd());
+  torchLight.target.updateMatrixWorld();
+  torchLight.intensity += ((torch.on?14:0)-torchLight.intensity)*Math.min(1,dt*10);
+  flashLight.intensity *= 0.82;
+  foeLight.flashI *= 0.82;   // 对手枪口闪光与本地同节奏衰减
+  for(const s of impacts) s.i *= 0.88;   // 弹着点微光衰减
+  const fwd=camFwd();
+  const ti=torchLight.intensity, fi=flashLight.intensity;
+  for(let i=0;i<litLines.length;i++) revealLine(litLines[i], fwd, dt, ti, fi);
+  for(let i=0;i<floorLines.length;i++) revealLine(floorLines[i], fwd, dt, ti, fi);
+}
+
+// ---------- main loop ----------
+let last=performance.now();
+function loop(){
+  requestAnimationFrame(loop);
+  const now=performance.now(); const dt=Math.min(0.05,(now-last)/1000); last=now;
+  if(running && !paused && (player.alive || gameMode==='versus')) update(dt);
+  updateViewModel(dt);
+  updateTracers(dt);
+  renderer.render(scene,camera);
+}
+function update(dt){
+  // 接敌姿态计时：精瞄持续维持，否则随时间衰减（开火时已在 fire() 中刷新）
+  if(gun.ads) player.engagedT = Math.max(player.engagedT, 0.3);
+  if(player.engagedT>0) player.engagedT -= dt;
+  // while dead in versus, only run the versus net/respawn loop (no player control)
+  if(gameMode==='versus' && !player.alive){
+    updateVersus(dt);
+    updateReveal(dt);
+    syncHUD();
+    if(mapOn) drawMinimap();
+    return;
+  }
+  // movement
+  const fwd=new THREE.Vector3(Math.sin(player.yaw),0,Math.cos(player.yaw));
+  const right=new THREE.Vector3(Math.cos(player.yaw),0,-Math.sin(player.yaw));
+  let mx=0,mz=0;
+  if(keys.KeyW){mx-=fwd.x;mz-=fwd.z;}
+  if(keys.KeyS){mx+=fwd.x;mz+=fwd.z;}
+  if(keys.KeyD){mx+=right.x;mz+=right.z;}
+  if(keys.KeyA){mx-=right.x;mz-=right.z;}
+  const len=Math.hypot(mx,mz);
+  let spd=player.speed*(gun.ads?0.5:1)*(keys.ShiftLeft?0.45:1);
+  if(len>0){
+    mx/=len; mz/=len;
+    const nx=player.pos.x+mx*spd*dt, nz=player.pos.z+mz*spd*dt;
+    if(!collide(nx,player.pos.z)) player.pos.x=nx;
+    if(!collide(player.pos.x,nz)) player.pos.z=nz;
+  }
+  // peek lean
+  player.peekTarget = keys.ShiftLeft? (keys.KeyD?1:(keys.KeyA?-1:0.0)) : 0;
+  if(keys.ShiftLeft && !keys.KeyA && !keys.KeyD) player.peekTarget=0.0;
+  player.peek += (player.peekTarget-player.peek)*Math.min(1,dt*8);
+
+  ui.stanceStat.textContent = '站姿 · ' + (keys.ShiftLeft?'切角窥视':'直立');
+  ui.stanceStat.classList.toggle('peek', !!keys.ShiftLeft);
+
+  // weapon timers
+  if(gun.cooldown>0) gun.cooldown-=dt;
+  gun.recoil *= 0.86;
+  if(gun.reloading){
+    gun.reloadT-=dt;
+    if(gun.reloadT<=0){
+      const need=gun.magMax-gun.mag;
+      const take=Math.min(need,gun.reserve);
+      gun.mag+=take; gun.reserve-=take; gun.reloading=false; syncHUD();
+    }
+  }
+
+  // camera placement w/ recoil + peek
+  camera.position.copy(player.pos);
+  // lean offset
+  const leanR=new THREE.Vector3(Math.cos(player.yaw),0,-Math.sin(player.yaw));
+  camera.position.addScaledVector(leanR, player.peek*0.6);
+  camera.position.y = 1.6 - Math.abs(player.peek)*0.15;
+  const pitch=player.pitch + gun.recoil*0.8;
+  camera.rotation.order='YXZ';
+  camera.rotation.y=player.yaw; camera.rotation.x=pitch; camera.rotation.z=-player.peek*0.12;
+
+  // crosshair spread
+  const moving = len>0;
+  const cs = gun.ads? 12 : (moving?34:22)+gun.recoil*120;
+  ui.cross.style.width=cs+'px'; ui.cross.style.height=cs+'px';
+
+  // door anim
+  for(const d of doors){
+    d.angle += (d.target-d.angle)*Math.min(1,dt*6);
+    d.pivot.rotation.y = d.angle;
+  }
+
+  // clue spin
+  clues.forEach(c=> c.mesh.rotation.y += dt*1.2);
+  // ammo crates: bob/spin + auto-resupply when you walk over one
+  for(const a of ammoCrates){
+    if(a.used) continue;
+    a.grp.rotation.y += dt*0.8;
+    a.grp.position.y = 0.06*Math.sin(performance.now()*0.003 + a.x);
+    if(Math.hypot(player.pos.x-a.x, player.pos.z-a.z) < 1.3 && gun.reserve < 36){
+      gun.reserve = 36;
+      a.used = true;
+      a.usedAt = performance.now();
+      a.grp.visible = false;
+      SFX.pickup();
+      ammoFlash();
+      syncHUD();
+      // 对战中：把吃箱事件同步给对手（可靠信道），防止一箱两吃
+      if(gameMode==='versus') NET.send({ t:'ammo', i:ammoCrates.indexOf(a) });
+    }
+  }
+
+  if(gameMode==='versus'){
+    updateVersus(dt);
+    updateReveal(dt);
+    updateAimTargetVS();
+    syncHUD();
+    if(mapOn) drawMinimap();
+    return;
+  }
+
+  updateEnemies(dt);
+  updateReveal(dt);
+  updateAimTarget();
+  updateExit(dt);
+  syncHUD();
+  if(mapOn) drawMinimap();
+}
+
+function updateExit(dt){
+  if(!exit) return;
+  const allDead = enemies.every(e=>!e.alive);
+
+  // reinforcement waves: when the current batch is wiped, send the next one
+  if(allDead && pendingWaves.length>0){
+    if(waveSpawnTimer<=0){
+      // announce, then spawn after a short beat
+      waveSpawnTimer = 2.0;
+      const lead = squad.leader && squad.leader.alive ? squad.leader.name : '指挥部';
+      radio(lead, '又来一批 · 守住！', true);
+      const promptEl=document.getElementById('exitPrompt');
+      promptEl.textContent='增援接近中…';
+      promptEl.classList.remove('hidden');
+    } else {
+      waveSpawnTimer-=dt;
+      if(waveSpawnTimer<=0){
+        spawnWave(pendingWaves.shift());
+        document.getElementById('exitPrompt').textContent='区域肃清 · 前往绿色出口撤离';
+      }
+    }
+    return; // exit stays closed while waves remain
+  }
+
+  const cleared = allDead && pendingWaves.length===0;
+  if(exit.ring){
+    const targetOp = cleared ? (0.5+0.4*Math.sin(performance.now()*0.004)) : 0;
+    const m=exit.ring.material;
+    m.opacity += (targetOp-m.opacity)*Math.min(1,dt*5);
+    exit.ring.rotation.y += dt*0.6;
+  }
+  if(cleared && !exitReached){
+    const d=Math.hypot(player.pos.x-exit.x, player.pos.z-exit.z);
+    if(d < exit.r+0.4){ exitReached=true; advanceLevel(); }
+  }
+  const prompt=document.getElementById('exitPrompt');
+  if(cleared && !exitReached){ prompt.textContent='区域肃清 · 前往绿色出口撤离'; prompt.classList.remove('hidden'); }
+  else if(!allDead){ prompt.classList.add('hidden'); }
+}
+
+// ============================================================
+//  VERSUS — 1v1 deathmatch update, networking sync & rules
+// ============================================================
+function vsHandleMsg(m){
+  if(m.t==='state'){
+    // remote player's transform/torch/alive
+    vs.foeState.x=m.x; vs.foeState.z=m.z; vs.foeState.yaw=m.yaw; vs.foeState.torch=m.l; vs.foeState.peek=m.pk;
+    vs.foeState.engaged = !!m.e;
+    if(m.a!==undefined) vs.foeState.alive=m.a;
+    // 快照入缓冲，供 updateVersus 做延迟插值
+    vs.snaps.push({ t:performance.now(), x:m.x, z:m.z, yaw:m.yaw, pk:m.pk||0, pt:m.pt||0 });
+    if(vs.snaps.length>40) vs.snaps.shift();
+  } else if(m.t==='shot'){
+    // 对手开枪：枪口闪光照亮其周围线框（黑暗中靠枪火定位对手），并按距离播枪声
+    if(vs.foe && vs.foeState.alive){
+      foeLight.flashI = 6;
+      vs.foe.h.anim.recoil = 1;   // 持枪臂后坐动画
+      const dist=Math.hypot(player.pos.x-vs.foe.grp.position.x, player.pos.z-vs.foe.grp.position.z);
+      SFX.enemyShot(dist);
+      // 来向曳光：从对手枪口到其弹着点 —— 反向追溯射手方位的关键信息
+      if(m.ex!==undefined){
+        const ox=vs.foe.grp.position.x+foeLight.fwd.x*0.6;
+        const oz=vs.foe.grp.position.z+foeLight.fwd.z*0.6;
+        spawnTracer(ox, 1.46, oz, m.ex, m.ey, m.ez, 0x8a1414);
+        spawnImpact(m.ex, m.ey, m.ez, 2.4);
+      }
+    }
+  } else if(m.t==='rel'){
+    // 对手换弹：收枪动作（也是进攻窗口的视觉信号）
+    if(vs.foe) vs.foe.h.anim.reload = 1.4;
+  } else if(m.t==='hit'){
+    // foe reports they hit ME for dmg -> apply locally
+    if(player.alive){ vsApplyDamage(m.d, m.head); }
+  } else if(m.t==='ammo'){
+    // 对手吃掉了某个补给箱：本地同步消失（避免一箱两吃）
+    const a=ammoCrates[m.i];
+    if(a && !a.used){ a.used=true; a.usedAt=performance.now(); a.grp.visible=false; }
+  } else if(m.t==='pause'){
+    showVsBanner(m.on?'对手暂停了游戏':'对手已回来', m.on?'#b06a00':'#1aaa3c');
+  } else if(m.t==='dead'){
+    // foe died -> I scored a kill (authoritative on shooter side already counted; this confirms)
+  } else if(m.t==='score'){
+    const prevMy=vs.myKills;
+    vs.myKills=m.foe; vs.foeKills=m.me;  // mirror (their "me" is my "foe")
+    if(vs.myKills>prevMy) showVsBanner('击杀对手！', '#1aaa3c');
+    syncHUD();
+    checkVsWin();
+  } else if(m.t==='bye'){
+    netDisconnected();
+  }
+}
+function vsApplyDamage(d, head){
+  hp-=d; SFX.hit(); updateHealthHUD();
+  const hit=document.getElementById('hit'); hit.style.opacity='1'; setTimeout(()=>hit.style.opacity='0',140);
+  if(hp<=0 && player.alive){
+    hp=0; updateHealthHUD();
+    player.alive=false;
+    vs.foeKills++;                 // the foe killed me
+    NET.send({t:'score', me:vs.myKills, foe:vs.foeKills});
+    vs.respawnAt = performance.now()+2200;
+    showVsBanner('你被击杀', '#d11f1f');
+    if(!checkVsWin()){ /* will respawn */ }
+  }
+}
+function vsRespawn(){
+  // 复活点：选离对手当前位置最远的出生点，避免被守尸压制
+  let sp = vs.spawns[NET.isHost?0:1];
+  if(vs.foe){
+    const fx=vs.foe.grp.position.x, fz=vs.foe.grp.position.z;
+    let best=-1;
+    for(const s of vs.spawns){
+      const d=Math.hypot(s.x-fx, s.z-fz);
+      if(d>best){ best=d; sp=s; }
+    }
+  }
+  player.pos.set(sp.x,1.6,sp.z); player.yaw=sp.yaw; player.pitch=0; player.peek=0;
+  hp=100; updateHealthHUD(); player.alive=true;
+  gun.mag=gun.magMax; gun.reserve=36; gun.reloading=false; gun.cooldown=0;
+  torch.on=false; syncHUD();
+}
+function checkVsWin(){
+  if(vs.myKills>=vs.target || vs.foeKills>=vs.target){
+    const win = vs.myKills>vs.foeKills;
+    running=false; document.exitPointerLock?.();
+    endScreen(win?'VICTORY':'DEFEAT', `比分 ${vs.myKills} : ${vs.foeKills}`, win?'win':'dead', 'vs-finish');
+    return true;
+  }
+  return false;
+}
+let vsBannerEl=null;
+function showVsBanner(text,color){
+  const el=document.getElementById('exitPrompt');
+  el.textContent=text; el.style.color=color||'#d11f1f'; el.classList.remove('hidden');
+  clearTimeout(vsBannerEl); vsBannerEl=setTimeout(()=>el.classList.add('hidden'),1600);
+}
+function updateVersus(dt){
+  // drain queued net messages
+  while(vs.msgQueue.length) vsHandleMsg(vs.msgQueue.shift());
+
+  // respawn timer
+  if(!player.alive && vs.respawnAt && performance.now()>=vs.respawnAt){
+    vs.respawnAt=0; vsRespawn();
+  }
+
+  // —— 对手位置：快照插值（渲染时间落后 110ms，在两个快照之间取值）——
+  // 比指数追赶平滑得多：20Hz 同步下转身不再卡顿，偶发丢包也不会瞬移。
+  if(vs.foe){
+    const f=vs.foe, s=vs.foeState;
+    const rt=performance.now()-110;
+    const sn=vs.snaps;
+    let fpt=0, fpk=0;
+    while(sn.length>2 && sn[1].t<=rt) sn.shift();
+    if(sn.length>=2 && sn[0].t<=rt){
+      const a=sn[0], b=sn[1];
+      const k=Math.min(1, Math.max(0, (rt-a.t)/Math.max(1,b.t-a.t)));
+      f.grp.position.x = a.x+(b.x-a.x)*k;
+      f.grp.position.z = a.z+(b.z-a.z)*k;
+      // 人形骨架正面是局部 +z，玩家朝向约定相差 π
+      f.grp.rotation.y = a.yaw + angleDiff(b.yaw,a.yaw)*k + Math.PI;
+      fpt = a.pt+(b.pt-a.pt)*k;
+      fpk = a.pk+(b.pk-a.pk)*k;
+    } else if(sn.length){
+      const lastS=sn[sn.length-1];
+      f.grp.position.x=lastS.x; f.grp.position.z=lastS.z;
+      f.grp.rotation.y=lastS.yaw + Math.PI;
+      fpt=lastS.pt; fpk=lastS.pk;
+    }
+    f.grp.visible = s.alive;
+    // 对手全身动画：步态随位移，瞄准随其鼠标俯仰，Shift 侧倾，T 举手电，
+    // 接敌时 high-ready 据枪，贴墙时取得依托（朝向用未 +π 的世界朝向 s.yaw）
+    animateHumanoid(f.h, dt, fpt, fpk, s.torch,
+      { engaged: s.engaged || foeLight.flashI>0.5,
+        wall: nearWallSide(f.grp.position.x, f.grp.position.z, s.yaw) });
+    f.grp.updateMatrixWorld(true);  // keep hitbox world matrices current for raycasts
+    // 对手光源参数（手电朝向 = 身体正面，即局部 +z）
+    foeLight.active = s.alive;
+    foeLight.pos.set(f.grp.position.x, 1.55, f.grp.position.z);
+    const fy=f.grp.rotation.y;
+    foeLight.fwd.set(Math.sin(fy), 0, Math.cos(fy));
+    foeLight.torchI += ((s.torch?14:0)-foeLight.torchI)*Math.min(1,dt*10);
+  } else foeLight.active=false;
+
+  // 对战中补给箱 20 秒后重生（双方按本地时钟，吃箱事件已同步，误差可忽略）
+  for(const a of ammoCrates){
+    if(a.used && a.usedAt && performance.now()-a.usedAt>20000){
+      a.used=false; a.usedAt=0; a.grp.visible=true;
+    }
+  }
+
+  // music tension: combat when either light is on or the foe is near
+  const near = vs.foe && vs.foeState.alive &&
+    Math.hypot(player.pos.x-vs.foeState.x, player.pos.z-vs.foeState.z) < 9;
+  SFX.setMusicMode((torch.on || vs.foeState.torch || near) ? 'combat' : 'calm');
+}
+
+// 状态同步固定 20Hz，独立于渲染循环：标签页切到后台时 rAF 会被节流，
+// 但这里仍持续发送，对手不会看到“冻结的幽灵”。
+setInterval(()=>{
+  if(gameMode==='versus' && vs.active && NET.connected){
+    NET.send({ t:'state',
+      x:+player.pos.x.toFixed(3), z:+player.pos.z.toFixed(3),
+      yaw:+player.yaw.toFixed(3), pt:+player.pitch.toFixed(2),
+      l:torch.on, pk:+player.peek.toFixed(2), a:player.alive,
+      e: player.engagedT>0 ? 1:0 });
+  }
+}, 50);
+
+// aiming reticle name/health for the foe
+function updateAimTargetVS(){
+  if(!vs.foe || !vs.foeState.alive){ document.getElementById('target').classList.add('hidden'); return; }
+  _ray.set(camera.position, camDir());
+  let wd=Infinity; const wh=_ray.intersectObjects(wallMeshes,false); if(wh.length) wd=wh[0].distance;
+  const hits=_ray.intersectObjects([vs.foe.headHit,vs.foe.bodyHit],false);
+  const tgt=document.getElementById('target');
+  if(hits.length && hits[0].distance<wd){
+    tgt.classList.remove('hidden');
+    document.getElementById('tname').textContent='敌方特工';
+    document.getElementById('tfill').style.width='100%';
+  } else tgt.classList.add('hidden');
+}
+
+// ---------- aim target name + HP bar ----------
+const tgtEl = document.getElementById('target');
+const tnameEl = document.getElementById('tname');
+const tfillEl = document.getElementById('tfill');
+let hpHoldUntil = 0;       // keep bar visible briefly after a hit
+let lastTarget = null;
+function updateAimTarget(){
+  // raycast straight ahead (no spread) to see who we're pointing at
+  _ray.set(camera.position, camDir());
+  const ray = _ray;
+  let wallDist=Infinity; const wh=ray.intersectObjects(wallMeshes,false); if(wh.length) wallDist=wh[0].distance;
+  let aimed=null, aimedDist=Infinity;
+  for(const en of enemies){
+    if(!en.alive) continue;
+    const hits=ray.intersectObjects([en.headHit,en.bodyHit],false);
+    if(hits.length && hits[0].distance<aimedDist){ aimedDist=hits[0].distance; aimed=en; }
+  }
+  if(aimed && aimedDist<wallDist){ lastTarget=aimed; showTarget(aimed); }
+  else if(performance.now()<hpHoldUntil && lastTarget && lastTarget.alive){ showTarget(lastTarget); }
+  else { tgtEl.classList.add('hidden'); }
+}
+function showTarget(en){
+  tgtEl.classList.remove('hidden');
+  tnameEl.textContent = en.name || '未知目标';
+  tfillEl.style.width = (en.hp/en.maxhp*100) + '%';
+}
+function showEnemyHP(en){
+  hpHoldUntil = performance.now()+1500;  // keep bar up 1.5s after hit
+  lastTarget = en;
+  showTarget(en);
+}
+
+// ---------- minimap ----------
+const mapCv = document.getElementById('mapCanvas');
+const mapCtx = mapCv.getContext('2d');
+// world bounds shown on the map (set per level)
+let MAP = { minx:-9, maxx:9, minz:-17.5, maxz:9.5, size:200 };
+let exit = null; // {x, z, r} — reaching it after clearing advances the level
+let pendingWaves = [];   // queued reinforcement wave definitions
+let waveSpawnTimer = 0;  // brief delay between clearing a wave and the next emerging
+let waveCount = 0;       // how many waves total this level (for HUD)
+let waveIndex = 0;       // which wave is currently active (0 = initial)
+function w2m(x,z){
+  const px = (x-MAP.minx)/(MAP.maxx-MAP.minx)*MAP.size;
+  const py = (z-MAP.minz)/(MAP.maxz-MAP.minz)*MAP.size;
+  return [px, py];
+}
+function drawMinimap(){
+  const ctx=mapCtx; ctx.clearRect(0,0,MAP.size,MAP.size);
+  // walls
+  ctx.strokeStyle='rgba(20,20,20,.55)'; ctx.lineWidth=1;
+  ctx.fillStyle='rgba(20,20,20,.10)';
+  for(const c of colliders){
+    const [x1,y1]=w2m(c.minx,c.minz), [x2,y2]=w2m(c.maxx,c.maxz);
+    ctx.fillRect(x1,y1,x2-x1,y2-y1);
+    ctx.strokeRect(x1,y1,x2-x1,y2-y1);
+  }
+  // doors
+  for(const d of doors){
+    const [dx,dy]=w2m(d.x,d.z);
+    ctx.strokeStyle = d.open? 'rgba(176,106,0,.8)':'rgba(20,20,20,.5)';
+    ctx.beginPath(); ctx.arc(dx,dy,3,0,Math.PI*2); ctx.stroke();
+  }
+  // exit (green ring) — appears once room is cleared
+  if(exit && enemies.every(e=>!e.alive)){
+    const [ex,ey]=w2m(exit.x,exit.z);
+    ctx.strokeStyle='#1aaa3c'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(ex,ey,6,0,Math.PI*2); ctx.stroke();
+    ctx.lineWidth=1;
+  }
+  // clues
+  for(const cl of clues){
+    if(cl.found) continue;
+    const [cx,cy]=w2m(cl.x,cl.z);
+    ctx.fillStyle='rgba(176,106,0,.85)';
+    ctx.beginPath(); ctx.arc(cx,cy,2.5,0,Math.PI*2); ctx.fill();
+  }
+  // ammo crates — amber squares with a cross
+  for(const a of ammoCrates){
+    if(a.used) continue;
+    const [ax,ay]=w2m(a.x,a.z);
+    ctx.strokeStyle='#b06a00'; ctx.lineWidth=1.5;
+    ctx.strokeRect(ax-3,ay-3,6,6);
+    ctx.beginPath(); ctx.moveTo(ax-2,ay); ctx.lineTo(ax+2,ay);
+    ctx.moveTo(ax,ay-2); ctx.lineTo(ax,ay+2); ctx.stroke();
+  }
+  // enemies — red dots (leader gets an amber ring)
+  for(const en of enemies){
+    if(!en.alive) continue;
+    const [ex,ey]=w2m(en.x,en.z);
+    if(en.isLeader){
+      ctx.strokeStyle='#b06a00'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(ex,ey,6,0,Math.PI*2); ctx.stroke();
+    }
+    ctx.fillStyle='#d11f1f';
+    ctx.beginPath(); ctx.arc(ex,ey,4,0,Math.PI*2); ctx.fill();
+    // facing tick
+    ctx.strokeStyle='#d11f1f'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(ex,ey);
+    ctx.lineTo(ex+Math.sin(en.facing)*7, ey+Math.cos(en.facing)*7); ctx.stroke();
+  }
+  // versus: foe shows on radar only while their torch is ON (lit = detectable)
+  if(gameMode==='versus' && vs.foe && vs.foeState.alive && vs.foeState.torch){
+    const [ex,ey]=w2m(vs.foeState.x, vs.foeState.z);
+    ctx.fillStyle='#d11f1f';
+    ctx.beginPath(); ctx.arc(ex,ey,4,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='rgba(209,31,31,.5)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(ex,ey,8,0,Math.PI*2); ctx.stroke();
+  }
+  // player — green dot + view direction
+  const [px,py]=w2m(player.pos.x,player.pos.z);
+  // view cone — flip to match actual camera facing
+  ctx.fillStyle='rgba(30,170,60,.18)';
+  ctx.beginPath(); ctx.moveTo(px,py);
+  const va=player.yaw+Math.PI;
+  for(let a=-0.5;a<=0.5;a+=0.1){
+    ctx.lineTo(px+Math.sin(va+a)*26, py+Math.cos(va+a)*26);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#1aaa3c';
+  ctx.beginPath(); ctx.arc(px,py,4.5,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#0a6e26'; ctx.lineWidth=1; ctx.stroke();
+}
+
+// ---------- screens / progression ----------
+function resetGun(){
+  gun.mag=gun.magMax; gun.reserve=36; gun.reloading=false; gun.reloadT=0;
+  gun.cooldown=0; gun.recoil=0;
+}
+function beginLevel(i){
+  levelIndex=i;
+  loadLevel(i);
+  resetGun();
+  hp=100; player.alive=true;
+  updateHealthHUD();
+  document.getElementById('exitPrompt').classList.add('hidden');
+  document.getElementById('radio').innerHTML='';
+  syncHUD();
+}
+function startGame(){
+  SFX.init();
+  gameMode='campaign';
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('endScreen').classList.add('hidden');
+  document.getElementById('hud').classList.remove('hidden');
+  ui.cross.classList.remove('hidden');
+  beginLevel(0);
+  running=true;
+  canvas.requestPointerLock();
+}
+function lose(){
+  player.alive=false;
+  endScreen('YOU DIED', `本关失败 · 第 ${levelIndex+1} 关`, 'dead', 'restart-level');
+}
+function advanceLevel(){
+  if(levelIndex+1 < LEVELS.length){
+    SFX.pickup();
+    const next=levelIndex+1;
+    endScreen('LEVEL CLEAR', `第 ${levelIndex+1} 关肃清 · 进入第 ${next+1} 关`, 'win', 'next-level');
+  } else {
+    SFX.pickup();
+    endScreen('MISSION COMPLETE', `全部关卡肃清 · RAVEN 落网`, 'win', 'finish');
+  }
+}
+// endScreen with an action: 'restart-level' | 'next-level' | 'finish'
+function endScreen(t,s,cls,action){
+  running=false; document.exitPointerLock?.();
+  const es=document.getElementById('endScreen');
+  const h=document.getElementById('endTitle');
+  h.textContent=t; h.className=cls;
+  document.getElementById('endSub').textContent=s;
+  const btn=document.getElementById('restartBtn');
+  if(action==='next-level') btn.textContent='进入下一关';
+  else if(action==='finish') btn.textContent='重新开始';
+  else if(action==='vs-finish') btn.textContent='返回主菜单';
+  else btn.textContent='重试本关';
+  es.dataset.action=action;
+  es.classList.remove('hidden');
+}
+function handleEndButton(){
+  const es=document.getElementById('endScreen');
+  const action=es.dataset.action;
+  es.classList.add('hidden');
+  if(action==='vs-finish'){ quitToMenu(); return; }
+  if(action==='next-level'){ beginLevel(levelIndex+1); }
+  else if(action==='finish'){ beginLevel(0); }
+  else { beginLevel(levelIndex); }   // restart current level
+  running=true; canvas.requestPointerLock();
+}
+function togglePause(){
+  if(paused) resumeGame(); else pauseGame();
+}
+function pauseGame(){
+  if(paused || !running) return;
+  paused=true;
+  if(gameMode==='versus') NET.send({t:'pause', on:true});
+  document.exitPointerLock?.();
+  const sub=document.getElementById('pauseSub');
+  sub.textContent = gameMode==='versus' ? `死斗 · 比分 ${vs.myKills} : ${vs.foeKills}` : `第 ${levelIndex+1} 关 / 共 ${LEVELS.length} 关`;
+  document.getElementById('pauseScreen').classList.remove('hidden');
+}
+function resumeGame(){
+  if(!paused) return;
+  paused=false;
+  if(gameMode==='versus') NET.send({t:'pause', on:false});
+  document.getElementById('pauseScreen').classList.add('hidden');
+  canvas.requestPointerLock();
+}
+function quitToMenu(){
+  paused=false; running=false; exitReached=false;
+  MATCH.stop();
+  if(gameMode==='versus'){ NET.sayBye(); vs.active=false; }
+  gameMode='campaign';
+  document.getElementById('pauseScreen').classList.add('hidden');
+  document.getElementById('endScreen').classList.add('hidden');
+  document.getElementById('hud').classList.add('hidden');
+  ui.cross.classList.add('hidden');
+  document.exitPointerLock?.();
+  document.getElementById('startScreen').classList.remove('hidden');
+}
+document.getElementById('startBtn').onclick=startGame;
+document.getElementById('restartBtn').onclick=handleEndButton;
+document.getElementById('resumeBtn').onclick=resumeGame;
+document.getElementById('quitBtn').onclick=quitToMenu;
+
+// ---------- versus / networking UI ----------
+function startVersusMatch(){
+  SFX.init();
+  gameMode='versus';
+  vs.active=true; vs.myKills=0; vs.foeKills=0; vs.foeDmg=0; vs.respawnAt=0;
+  document.getElementById('netScreen').classList.add('hidden');
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('endScreen').classList.add('hidden');
+  document.getElementById('hud').classList.remove('hidden');
+  ui.cross.classList.remove('hidden');
+  loadArena();
+  hp=100; player.alive=true; updateHealthHUD();
+  gun.mag=gun.magMax; gun.reserve=36; gun.reloading=false; gun.cooldown=0;
+  syncHUD();
+  running=true; paused=false;
+  canvas.requestPointerLock();
+}
+// route incoming net messages into the queue (drained in updateVersus)
+NET.onMsg = (m)=>{ vs.msgQueue.push(m); };
+NET.onOpen = ()=>{
+  MATCH.stop();            // P2P 已打通，撮合中继使命完成
+  document.getElementById('netStatus').textContent='已连接！进入对战…';
+  setTimeout(startVersusMatch, 500);
+};
+NET.onClose = ()=>{ netDisconnected(); };
+function netDisconnected(){
+  if(gameMode==='versus' && running){
+    running=false; document.exitPointerLock?.();
+    endScreen('连接断开', '对手已离线', 'dead', 'vs-finish');
+  }
+}
+
+const $=id=>document.getElementById(id);
+// ---- 自动匹配（进入战区） ----
+MATCH.onStatus = (text)=>{ $('netStatus').textContent=text; };
+function resetZoneBtn(){ $('enterZoneBtn').disabled=false; $('enterZoneBtn').textContent='进入战区'; }
+$('versusBtn').onclick=()=>{
+  $('startScreen').classList.add('hidden');
+  $('netScreen').classList.remove('hidden');
+  $('netAuto').classList.remove('hidden');
+  $('netManual').classList.add('hidden');
+  resetZoneBtn();
+  $('netStatus').textContent='进入战区即自动配对 · 想和指定好友打，就填同一个房间号';
+};
+$('enterZoneBtn').onclick=()=>{
+  const room=$('roomCode').value.trim().toUpperCase().replace(/[^A-Z0-9\u4e00-\u9fa5]/g,'');
+  $('enterZoneBtn').disabled=true;
+  $('enterZoneBtn').textContent='匹配中…（点「返回」取消）';
+  MATCH.start(room);
+};
+$('roomCode').addEventListener('keydown', e=>{ if(e.key==='Enter') $('enterZoneBtn').click(); });
+$('manualToggle').onclick=()=>{ $('netManual').classList.toggle('hidden'); };
+$('netBack').onclick=()=>{
+  MATCH.stop(); NET.close(); resetZoneBtn();
+  $('netScreen').classList.add('hidden');
+  $('startScreen').classList.remove('hidden');
+};
+// ---- 手动连接（无外网备用方案，连接码已压缩） ----
+$('netHostBtn').onclick=async ()=>{
+  $('netPick').classList.add('hidden');
+  $('netHost').classList.remove('hidden');
+  $('netJoin').classList.add('hidden');
+  $('netStatus').textContent='正在生成邀请码…';
+  try{
+    const desc=await NET.createOffer();
+    $('hostOffer').value=await NET.pack(desc);
+    $('netStatus').textContent='把邀请码发给对方，等待应答码';
+  }catch(e){ $('netStatus').textContent='生成失败：'+e.message; }
+};
+$('netJoinBtn').onclick=()=>{
+  $('netPick').classList.add('hidden');
+  $('netJoin').classList.remove('hidden');
+  $('netHost').classList.add('hidden');
+  $('netStatus').textContent='粘贴对方的邀请码';
+};
+$('joinGen').onclick=async ()=>{
+  const off=$('joinOffer').value.trim();
+  if(!off){ $('netStatus').textContent='请先粘贴邀请码'; return; }
+  $('netStatus').textContent='正在生成应答码…';
+  try{
+    const ans=await NET.acceptOffer(await NET.unpack(off));
+    $('joinAnswer').value=await NET.pack(ans);
+    $('netStatus').textContent='把应答码发回对方，等待连接…';
+  }catch(e){ $('netStatus').textContent='应答失败：检查邀请码是否完整 ('+e.message+')'; }
+};
+$('hostConnect').onclick=async ()=>{
+  const ans=$('hostAnswer').value.trim();
+  if(!ans){ $('netStatus').textContent='请先粘贴应答码'; return; }
+  $('netStatus').textContent='正在连接…';
+  try{ await NET.acceptAnswer(await NET.unpack(ans)); }
+  catch(e){ $('netStatus').textContent='连接失败：检查应答码 ('+e.message+')'; }
+};
+$('copyOffer').onclick=()=>{ navigator.clipboard?.writeText($('hostOffer').value); $('copyOffer').textContent='已复制'; setTimeout(()=>$('copyOffer').textContent='复制邀请码',1200); };
+$('copyAnswer').onclick=()=>{ navigator.clipboard?.writeText($('joinAnswer').value); $('copyAnswer').textContent='已复制'; setTimeout(()=>$('copyAnswer').textContent='复制应答码',1200); };
+
+
+// re-lock on click if lost pointer
+canvas.addEventListener('click', ()=>{ if(running && !paused && document.pointerLockElement!==canvas) canvas.requestPointerLock(); });
+
+addEventListener('resize', ()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+loop();
+</script>
+</body>
+</html>
